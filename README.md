@@ -16,7 +16,7 @@ Works with your keyboard or a game pad
 
 How to build it
 bash
-git clone https://github.com/yourname/fds-emulator.git
+git clone https://github.com/b84308463-blip/fds-emulator.git
 cd fds-emulator
 mkdir build && cd build
 cmake ..

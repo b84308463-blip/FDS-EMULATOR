@@ -1,0 +1,2143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>FDS Emulator - Enhanced</title>
+    <style>
+        :root {
+            --accent: #0f0;
+            --accent-dim: #0a0;
+            --bg: #0b0b0b;
+            --panel: #141414;
+            --border: #2a2a2a;
+            --text: #0f0;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background: radial-gradient(ellipse at top, #1a2a1a 0%, #050505 70%);
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            padding: 16px;
+            margin: 0;
+            min-height: 100vh;
+            text-shadow: 0 0 6px rgba(0,255,0,0.35);
+        }
+        h3 {
+            margin: 0 0 12px;
+            font-size: 20px;
+            letter-spacing: 2px;
+            color: #7f7;
+            text-shadow: 0 0 10px rgba(0,255,0,0.6);
+        }
+        h4 { margin: 0 0 8px; color: #8f8; font-size: 13px; letter-spacing: 1px; }
+        .container { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+        .screen-wrap {
+            position: relative;
+            background: #000;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            padding: 8px;
+            box-shadow: 0 0 24px rgba(0,255,0,0.12), inset 0 0 12px rgba(0,0,0,0.9);
+        }
+        canvas {
+            image-rendering: pixelated;
+            display: block;
+            background: #000;
+            border: 1px solid #111;
+            width: 512px;
+            height: 480px;
+            transition: width 0.15s, height 0.15s;
+        }
+        .shader-container { position: relative; display: inline-block; line-height: 0; }
+        .shader-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: 2px;
+        }
+        canvas.shader-crt { filter: contrast(1.12) saturate(1.3) brightness(1.08) blur(0.2px); }
+        .shader-overlay.crt {
+            background:
+                repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 3px),
+                radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.5) 100%);
+            mix-blend-mode: multiply;
+        }
+        .shader-overlay.crt::after {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(ellipse at center, rgba(60,255,60,0.06) 0%, transparent 70%);
+            mix-blend-mode: screen;
+        }
+        canvas.shader-scanlines { filter: contrast(1.05) brightness(1.02); }
+        .shader-overlay.scanlines {
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.35) 0px, rgba(0,0,0,0.35) 1px, transparent 1px, transparent 3px);
+        }
+        canvas.shader-scanlines-strong { filter: contrast(1.08) brightness(1.05); }
+        .shader-overlay.scanlines-strong {
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.55) 0px, rgba(0,0,0,0.55) 1px, transparent 1px, transparent 3px);
+        }
+        canvas.shader-lcd { filter: contrast(1.1) saturate(1.2); }
+        .shader-overlay.lcd {
+            background:
+                repeating-linear-gradient(90deg, rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px),
+                repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px);
+        }
+        canvas.shader-glow { filter: contrast(1.15) saturate(1.4) brightness(1.15) drop-shadow(0 0 2px rgba(0,255,0,0.4)); }
+        .shader-overlay.glow {
+            background: radial-gradient(ellipse at center, rgba(40,255,40,0.08) 0%, transparent 65%);
+            mix-blend-mode: screen;
+        }
+        canvas.shader-vignette { filter: contrast(1.1) saturate(1.15) brightness(1.03); }
+        .shader-overlay.vignette {
+            background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.7) 100%);
+        }
+        canvas.shader-classic { filter: contrast(1.14) saturate(1.35) brightness(1.06) blur(0.25px); }
+        .shader-overlay.classic {
+            background:
+                repeating-linear-gradient(0deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.28) 1px, transparent 1px, transparent 3px),
+                radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,0.55) 100%);
+            mix-blend-mode: multiply;
+        }
+        .shader-overlay.classic::after {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(ellipse at center, rgba(60,255,60,0.08) 0%, transparent 70%);
+            mix-blend-mode: screen;
+        }
+        canvas.shader-smooth { image-rendering: auto; filter: contrast(1.02) saturate(1.05) brightness(1.01); }
+
+        .screen-ctrl {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            margin-top: 8px; width: 100%;
+        }
+        .screen-ctrl label { font-size: 11px; color: #8f8; }
+        input[type="range"] { accent-color: var(--accent); width: 120px; }
+        button {
+            padding: 6px 12px; font-size: 12px; cursor: pointer;
+            background: linear-gradient(180deg, #1e1e1e, #121212);
+            color: var(--accent); border: 1px solid var(--accent-dim); border-radius: 4px;
+            font-family: inherit; letter-spacing: 0.5px; transition: all 0.12s;
+        }
+        button:hover:not(:disabled) {
+            background: linear-gradient(180deg, #2a3a2a, #162016);
+            border-color: var(--accent); box-shadow: 0 0 10px rgba(0,255,0,0.25);
+        }
+        button:active:not(:disabled) { transform: translateY(1px); }
+        button:disabled { opacity: 0.35; cursor: not-allowed; border-color: #444; color: #555; }
+        button.active { background: linear-gradient(180deg, #1a3a1a, #0d200d); border-color: var(--accent); box-shadow: 0 0 8px rgba(0,255,0,0.4); }
+        button.danger { border-color: #a33; color: #f77; }
+        button.danger:hover:not(:disabled) { background: linear-gradient(180deg, #3a1a1a, #200d0d); border-color: #f55; box-shadow: 0 0 10px rgba(255,0,0,0.3); }
+        button.save-btn { border-color: #3a3; color: #8f8; }
+        button.save-btn:hover:not(:disabled) { background: linear-gradient(180deg, #1a3a1a, #0d200d); border-color: #6f6; }
+        button.load-btn { border-color: #36a; color: #8cf; }
+        button.load-btn:hover:not(:disabled) { background: linear-gradient(180deg, #1a2a3a, #0d1420); border-color: #6af; }
+        input[type="file"], input[type="text"], input[type="number"], select {
+            color: var(--accent); background: #000; border: 1px solid var(--accent-dim);
+            border-radius: 3px; padding: 4px 6px; font-family: inherit; font-size: 12px;
+        }
+        input[type="text"]:focus, input[type="number"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 6px rgba(0,255,0,0.3); }
+        #log {
+            max-height: 180px; overflow-y: auto; background: #000; padding: 8px;
+            font-size: 11px; white-space: pre; border: 1px solid var(--border);
+            border-radius: 4px; width: 100%; color: #6a6;
+        }
+        #log::-webkit-scrollbar, .panel-scroll::-webkit-scrollbar { width: 8px; }
+        #log::-webkit-scrollbar-thumb, .panel-scroll::-webkit-scrollbar-thumb { background: #1a3a1a; border-radius: 4px; }
+        .panel {
+            background: linear-gradient(180deg, #161616, #0e0e0e);
+            border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+            margin-bottom: 12px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 0 12px rgba(0,255,0,0.05);
+        }
+        .flex-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        table.hex-table { border-collapse: collapse; font-size: 11px; margin-top: 5px; font-family: inherit; }
+        table.hex-table th, table.hex-table td { border: 1px solid var(--border); padding: 2px 4px; text-align: center; }
+        table.hex-table th { background: #1a1a1a; color: #8f8; font-weight: normal; }
+        table.hex-table td.addr { color: #6a6; background: #0a0a0a; }
+        table.hex-table td.cell { cursor: pointer; background: #000; color: #6c6; min-width: 22px; }
+        table.hex-table td.cell:hover { background: #112211; color: #cfc; }
+        table.hex-table td.cell.editing { background: #0a2a0a; outline: 1px solid var(--accent); }
+        .hex-edit-input {
+            width: 30px; padding: 0 2px; font-size: 11px; text-align: center;
+            background: #001a00; color: #afc; border: 1px solid var(--accent); font-family: inherit;
+        }
+        .pad { display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 8px 0; user-select: none; -webkit-user-select: none; touch-action: none; }
+        .dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 3px; }
+        .pbtn { padding: 0; font-size: 15px; touch-action: none; border-radius: 6px; }
+        .pbtn.on { background: var(--accent); color: #000; box-shadow: 0 0 12px rgba(0,255,0,0.7); }
+        .pad .mid { display: flex; gap: 10px; }
+        .pad .small { padding: 8px 12px; font-size: 11px; border-radius: 12px; }
+        .pad .ab { display: flex; gap: 14px; }
+        .pad .round { width: 54px; height: 54px; border-radius: 50%; font-size: 18px; font-weight: bold; }
+        #keyhelp { width: 100%; font-size: 11px; color: #6a6; line-height: 1.6; margin: 6px 0; }
+        .disk-side { display: flex; align-items: center; gap: 8px; }
+        .disk-side select {
+            background: #000; color: var(--accent); border: 1px solid var(--accent-dim);
+            padding: 5px 8px; font-family: inherit; border-radius: 3px; font-size: 12px;
+        }
+        .cheat-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+        .cheat-row input { width: 70px; }
+        .cheat-row input.val { width: 50px; }
+        .cheat-list { max-height: 150px; overflow-y: auto; margin-top: 8px; }
+        .cheat-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 4px 8px; margin-bottom: 4px; background: #0a1a0a; border: 1px solid #1a3a1a;
+            border-radius: 4px; font-size: 11px;
+        }
+        .cheat-item button { padding: 2px 8px; font-size: 10px; }
+        .cheat-item .desc { color: #8c8; }
+        .panel-scroll { max-height: 220px; overflow-y: auto; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+        .tabs button { border-radius: 4px 4px 0 0; border-bottom: none; }
+        .tabs button.active { background: #0a2a0a; border-color: var(--accent); }
+        .side-col { width: 380px; }
+        .side-col .panel { width: 100%; }
+        .screen-col { flex: 1; min-width: 520px; }
+        .fullscreen-hint { font-size: 10px; color: #5a5; }
+        .speed-group { display: flex; align-items: center; gap: 6px; }
+        .speed-badge {
+            font-size: 11px; padding: 3px 8px; border: 1px solid var(--accent-dim);
+            border-radius: 10px; color: #8f8; min-width: 48px; text-align: center;
+        }
+        .speed-badge.fast { color: #ff8; border-color: #a80; }
+        .speed-badge.slow { color: #8cf; border-color: #08a; }
+        .disk-status-badge {
+            font-size: 11px; padding: 3px 8px; border: 1px solid var(--accent-dim);
+            border-radius: 10px; color: #8f8; min-width: 80px; text-align: center;
+        }
+        .disk-status-badge.ejected { color: #f77; border-color: #a33; }
+        .disk-status-badge.inserted { color: #8f8; border-color: var(--accent-dim); }
+        .save-slot-list { margin-top: 8px; }
+        .save-slot {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 5px 8px; margin-bottom: 4px; background: #0a1a0a; border: 1px solid #1a3a1a;
+            border-radius: 4px; font-size: 11px;
+        }
+        .save-slot.empty { background: #0a0a0a; border-color: #1a1a1a; color: #555; }
+        .save-slot .slot-info { color: #8c8; }
+        .save-slot .slot-actions { display: flex; gap: 4px; }
+        .save-slot button { padding: 2px 6px; font-size: 10px; }
+        .sram-info { font-size: 10px; color: #6a6; margin-top: 6px; }
+        /* Fullscreen */
+        .screen-wrap:fullscreen { border: none; padding: 0; display: flex; flex-direction: column; background: #000; }
+        .screen-wrap:fullscreen .shader-container { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .screen-wrap:fullscreen canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
+        .screen-wrap:fullscreen .screen-ctrl { position: absolute; bottom: 8px; left: 8px; right: 8px; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 6px; opacity: 0; transition: opacity 0.2s; }
+        .screen-wrap:fullscreen:hover .screen-ctrl { opacity: 1; }
+        .screen-wrap:fullscreen .pad, .screen-wrap:fullscreen #keyhelp, .screen-wrap:fullscreen h4 { display: none; }
+        .screen-wrap:fullscreen #log { display: none; }
+    </style>
+</head>
+<body>
+    <h3>&#9670; FDS EMULATOR &#9670;</h3>
+
+    <div class="panel">
+        <div class="flex-row">
+            <span style="font-size:12px;">BIOS: <input type="file" id="biosFile" accept=".rom"></span>
+            <span style="font-size:12px;">FDS: <input type="file" id="fdsFile" accept=".fds"></span>
+            <span id="diskStatusBadge" class="disk-status-badge ejected">No Disk</span>
+            <span id="sramBadge" class="disk-status-badge" style="color:#6af;border-color:#36a;min-width:60px;">SRAM: 0B</span>
+        </div>
+        <div class="flex-row" style="margin-top:10px;">
+            <button id="runBtn" disabled>Run</button>
+            <button id="pauseBtn" disabled>Pause</button>
+            <button id="stepBtn" disabled>Step</button>
+            <button id="resetBtn" disabled>Reset</button>
+            <div class="disk-side">
+                <label style="font-size:11px;">Disk Side:</label>
+                <select id="sideSelect" disabled>
+                    <option value="0">Side A</option>
+                </select>
+            </div>
+            <button id="ejectBtn" class="danger" disabled>Eject Disk</button>
+            <div class="speed-group">
+                <label style="font-size:11px;">Speed:</label>
+                <button id="slowDownBtn" title="Slower">&#9664;</button>
+                <span id="speedBadge" class="speed-badge">1.0x</span>
+                <button id="speedUpBtn" title="Faster">&#9654;</button>
+                <button id="speedResetBtn" title="Reset to 1x">1x</button>
+            </div>
+            <span id="fpsDisplay" style="font-size:11px;color:#6a6;margin-left:auto;">FPS: --</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="screen-col">
+            <div class="screen-wrap" id="screenWrap">
+                <div class="shader-container">
+                    <canvas id="screen" width="256" height="240" tabindex="0"></canvas>
+                    <div class="shader-overlay" id="shaderOverlay"></div>
+                </div>
+                <div class="screen-ctrl">
+                    <label>Size:</label>
+                    <input type="range" id="sizeSlider" min="256" max="1024" step="64" value="512">
+                    <span id="sizeLabel" style="font-size:11px;">512px</span>
+                    <button id="fullscreenBtn">Fullscreen</button>
+                    <label style="margin-left:4px;">Shader:</label>
+                    <select id="shaderSelect">
+                        <option value="none">None</option>
+                        <option value="crt">CRT</option>
+                        <option value="scanlines">Scanlines</option>
+                        <option value="scanlines-strong">Scanlines (Strong)</option>
+                        <option value="lcd">LCD Grid</option>
+                        <option value="glow">Phosphor Glow</option>
+                        <option value="vignette">Vignette</option>
+                        <option value="classic" selected>Classic CRT</option>
+                        <option value="smooth">Smooth</option>
+                    </select>
+                    <span class="fullscreen-hint">(click screen, press F for fullscreen)</span>
+                </div>
+                <div class="pad" id="gamepad">
+                    <div class="dpad">
+                        <button class="pbtn" data-btn="UP" style="grid-area:1/2">&#9650;</button>
+                        <button class="pbtn" data-btn="LEFT" style="grid-area:2/1">&#9664;</button>
+                        <button class="pbtn" data-btn="RIGHT" style="grid-area:2/3">&#9654;</button>
+                        <button class="pbtn" data-btn="DOWN" style="grid-area:3/2">&#9660;</button>
+                    </div>
+                    <div class="mid">
+                        <button class="pbtn small" data-btn="SELECT">SELECT</button>
+                        <button class="pbtn small" data-btn="START">START</button>
+                    </div>
+                    <div class="ab">
+                        <button class="pbtn round" data-btn="B">B</button>
+                        <button class="pbtn round" data-btn="A">A</button>
+                    </div>
+                </div>
+                <div id="keyhelp">Arrows = D-pad &middot; X = A &middot; Z = B &middot; Enter/S = Start &middot; Shift/A = Select &middot; F = Fullscreen &middot; R = Reset &middot; +/- = Speed &middot; E = Eject &middot; F5/F6/F7 = Save &middot; F8/F9/F10 = Load</div>
+                <h4>Log Output</h4>
+                <pre id="log"></pre>
+            </div>
+        </div>
+
+        <div class="side-col">
+            <div class="panel">
+                <h4>CPU Registers</h4>
+                <div id="regsView" style="font-size:12px; line-height:1.6;">
+                    PC: $<span>E000</span> | SP: $<span>FD</span> | P: $<span>24</span><br>
+                    A: $<span>00</span> | X: $<span>00</span> | Y: $<span>00</span><br>
+                    Cycles: <span>0</span> | Status: <span id="cpuStatus">Stopped</span><br>
+                    Disk: <span id="diskStatus">-</span>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="tabs">
+                    <button id="tabMem" class="active">RAM</button>
+                    <button id="tabCheat">Cheats</button>
+                    <button id="tabSave">Saves</button>
+                </div>
+
+                <div id="memPanel">
+                    <div class="flex-row" style="margin-bottom:8px;">
+                        <label style="font-size:11px;">Addr: $<input type="text" id="hexAddrInput" value="0000" size="4" maxlength="4"></label>
+                        <button id="hexGoBtn">Go</button>
+                        <span style="font-size:10px;color:#5a5;">click a cell to edit</span>
+                    </div>
+                    <div class="panel-scroll">
+                        <table class="hex-table" id="hexTable">
+                            <thead>
+                                <tr>
+                                    <th>Addr</th>
+                                    <th>+0</th><th>+1</th><th>+2</th><th>+3</th>
+                                    <th>+4</th><th>+5</th><th>+6</th><th>+7</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hexTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="cheatPanel" style="display:none;">
+                    <div class="cheat-row">
+                        <input type="text" id="cheatAddr" placeholder="Addr (hex)" maxlength="4" size="6">
+                        <input type="text" id="cheatVal" placeholder="Val (hex)" maxlength="2" size="4" class="val">
+                        <button id="addCheatBtn">Add</button>
+                    </div>
+                    <div class="flex-row" style="margin-bottom:4px;">
+                        <label style="font-size:11px;"><input type="checkbox" id="cheatEnabled" checked> Enable cheats</label>
+                    </div>
+                    <div class="cheat-list" id="cheatList"></div>
+                </div>
+
+                <div id="savePanel" style="display:none;">
+                    <div class="flex-row" style="margin-bottom:8px;">
+                        <button id="quickSaveBtn" class="save-btn">Quick Save (F5)</button>
+                        <button id="quickLoadBtn" class="load-btn">Quick Load (F8)</button>
+                    </div>
+                    <div class="flex-row" style="margin-bottom:4px;">
+                        <button id="exportStateBtn">Export State</button>
+                        <button id="importStateBtn">Import State</button>
+                        <input type="file" id="stateFileInput" accept=".fdsstate" style="display:none;">
+                    </div>
+                    <div class="save-slot-list" id="saveSlotList"></div>
+                    <div class="sram-info" id="sramInfo">SRAM: not initialized</div>
+                    <div class="flex-row" style="margin-top:8px;">
+                        <button id="saveSramBtn">Save SRAM</button>
+                        <button id="loadSramBtn">Load SRAM</button>
+                        <input type="file" id="sramFileInput" accept=".srm" style="display:none;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+const mem = new Uint8Array(0x10000);
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const frameBuffer = new Uint32Array(256 * 240);
+const bgPixels = new Uint8Array(256 * 240);
+
+let fdsData = null;
+let fdsRawData = null;
+let fdsSideCount = 1;
+let fdsCurrentSide = 0;
+let diskInserted = false;
+let running = false, paused = false, frameCount = 0;
+let biosReady = false, diskReady = false;
+
+let timerReload = 0, timerCounter = 0, timerRepeat = false;
+let timerIrqEnabled = false, timerIrqPending = false;
+let diskIoEnabled = false, diskIrqPending = false;
+let ctl4025 = 0x2E, driveMotor = false, driveReady = false, endHead = false;
+let readyDelay = 0, byteTimer = 0, diskPos = 0, gapEnded = false;
+let byteFlag = false, dataReg = 0, extOut = 0xFF, fdsLogCount = 0, newBlock = false;
+let inVBlank = false;
+let mirrorHoriz = false;
+let cheats = [];
+let cheatsEnabled = true;
+const ntOffset = t => (mirrorHoriz ? (t >> 1) : (t & 1)) * 0x400;
+
+// Speed control
+let speedMultiplier = 1.0;
+const SPEED_MIN = 0.05, SPEED_MAX = 8.0, SPEED_STEP = 0.25;
+
+// FPS tracking
+let lastFrameTime = performance.now(), fpsAccum = 0, fpsFrames = 0;
+
+// ===== Save state system =====
+const SAVE_SLOTS = 3;
+let saveSlots = [null, null, null];   // {timestamp, thumbnail?, state}
+let currentRomName = 'unknown';
+let sram = null;                       // Uint8Array or null
+
+const STATE_MAGIC = 0x46445353;        // 'FDSS'
+const STATE_VERSION = 1;
+
+// ===================== FDS DISK DRIVE =====================
+const hx = (v, n = 2) => v.toString(16).toUpperCase().padStart(n, '0');
+const fdsLog = m => { if (fdsLogCount++ < 80) log(m); };
+
+function buildVirtualDisk(fdsBytes, sideIndex = 0) {
+    let pos = 0;
+    let sideCount = 1;
+    if (fdsBytes.length >= 4 && fdsBytes[0] === 0x46 && fdsBytes[1] === 0x44 && fdsBytes[2] === 0x53 && fdsBytes[3] === 0x1A) {
+        sideCount = fdsBytes[4];
+        pos = 16 + sideIndex * 65500;
+        log('FDS header: ' + sideCount + ' side(s) - using side ' + String.fromCharCode(65 + sideIndex));
+    }
+    if (pos >= fdsBytes.length) {
+        log('WARNING: side ' + String.fromCharCode(65 + sideIndex) + ' is empty');
+        return new Uint8Array(0);
+    }
+    const side = fdsBytes.subarray(pos, pos + 65500);
+    const out = [];
+    const gap = n => { for (let i = 0; i < n; i++) out.push(0); };
+    const block = (start, len) => {
+        out.push(0x80);
+        for (let i = 0; i < len; i++) out.push(start + i < side.length ? side[start + i] : 0);
+        out.push(0x4D, 0x62);
+    };
+    if (side.length < 58 || side[0] !== 0x01) log('WARNING: side ' + String.fromCharCode(65 + sideIndex) + ' does not start with a disk info block ($01)');
+    gap(3537);
+    block(0, 56);
+    gap(122);
+    block(56, 2);
+    let p = 58, files = 0;
+    while (p + 16 <= side.length && side[p] === 0x03) {
+        const sz = side[p + 13] | (side[p + 14] << 8);
+        gap(122); block(p, 16); p += 16;
+        gap(122); block(p, 1 + sz); p += 1 + sz;
+        files++;
+    }
+    gap(2000);
+    log('Disk side ' + String.fromCharCode(65 + sideIndex) + ': ' + files + ' file(s), stream ' + out.length + ' bytes');
+    return Uint8Array.from(out);
+}
+
+function fdsReset() {
+    timerReload = 0; timerCounter = 0; timerRepeat = false; timerIrqEnabled = false; timerIrqPending = false;
+    diskIoEnabled = false; diskIrqPending = false;
+    ctl4025 = 0x2E; driveMotor = false; driveReady = false; endHead = false;
+    readyDelay = 0; byteTimer = 0; diskPos = 0; gapEnded = false;
+    byteFlag = false; dataReg = 0; extOut = 0xFF; fdsLogCount = 0; newBlock = false;
+}
+
+function ejectDisk() {
+    if (!diskInserted) return;
+    diskInserted = false;
+    driveMotor = false;
+    driveReady = false;
+    endHead = false;
+    readyDelay = 0;
+    byteTimer = 0;
+    diskPos = 0;
+    gapEnded = false;
+    byteFlag = false;
+    dataReg = 0;
+    diskIrqPending = false;
+    timerIrqPending = false;
+    timerIrqEnabled = false;
+    log('Disk ejected');
+    updateDiskStatusBadge();
+    refreshButtons();
+}
+
+function insertDisk() {
+    if (!fdsData || !fdsData.length) {
+        log('No disk data to insert');
+        return;
+    }
+    diskInserted = true;
+    driveMotor = false;
+    driveReady = false;
+    endHead = false;
+    readyDelay = 0;
+    byteTimer = 0;
+    diskPos = 0;
+    gapEnded = false;
+    byteFlag = false;
+    dataReg = 0;
+    diskIrqPending = false;
+    timerIrqPending = false;
+    log('Disk inserted (side ' + String.fromCharCode(65 + fdsCurrentSide) + ')');
+    updateDiskStatusBadge();
+    refreshButtons();
+}
+
+function updateDiskStatusBadge() {
+    const badge = document.getElementById('diskStatusBadge');
+    if (!fdsRawData) {
+        badge.textContent = 'No Disk';
+        badge.className = 'disk-status-badge ejected';
+    } else if (diskInserted) {
+        badge.textContent = 'Disk: Side ' + String.fromCharCode(65 + fdsCurrentSide);
+        badge.className = 'disk-status-badge inserted';
+    } else {
+        badge.textContent = 'Disk Ejected';
+        badge.className = 'disk-status-badge ejected';
+    }
+}
+
+function readFDS(addr) {
+    if (addr >= 0x4040 && addr < 0x4080) return F.wave[addr - 0x4040] | 0x40;
+    if (addr === 0x4090) return F.gain | 0x40;
+    if (addr === 0x4092) return F.mgain | 0x40;
+    switch (addr) {
+        case 0x4030: {
+            let s = 0;
+            if (timerIrqPending) s |= 0x01;
+            if (byteFlag) s |= 0x82;
+            if (mirrorHoriz) s |= 0x08;
+            if (endHead) s |= 0x40;
+            timerIrqPending = false; diskIrqPending = false; byteFlag = false;
+            return s;
+        }
+        case 0x4031: {
+            const b = dataReg;
+            byteFlag = false; diskIrqPending = false;
+            return b;
+        }
+        case 0x4032:
+            return (diskInserted && fdsData ? 0 : 1) | (driveReady ? 0 : 2) | (fdsData ? 4 : 0);
+        case 0x4033: return 0x80 | (extOut & 0x7F);
+    }
+    return 0;
+}
+
+function writeFDS(addr, val) {
+    if (addr >= 0x4040) { fdsWrite(addr, val); return; }
+    switch (addr) {
+        case 0x4020: timerReload = (timerReload & 0xFF00) | val; break;
+        case 0x4021: timerReload = (timerReload & 0x00FF) | (val << 8); break;
+        case 0x4022:
+            if (!diskIoEnabled) break;
+            timerRepeat = (val & 1) !== 0;
+            timerIrqEnabled = (val & 2) !== 0;
+            if (timerIrqEnabled) timerCounter = timerReload; else timerIrqPending = false;
+            break;
+        case 0x4023:
+            diskIoEnabled = (val & 1) !== 0;
+            if (!diskIoEnabled) { timerIrqEnabled = false; timerIrqPending = false; diskIrqPending = false; }
+            break;
+        case 0x4024: byteFlag = false; diskIrqPending = false; break;
+        case 0x4025: {
+            const wasMotor = driveMotor;
+            ctl4025 = val;
+            mirrorHoriz = (val & 0x08) !== 0;
+            driveMotor = (val & 0x03) === 0x01;
+            if (driveMotor && !wasMotor) {
+                driveReady = false; endHead = false; readyDelay = 50000; diskPos = 0; gapEnded = false;
+            }
+            if (!driveMotor) { driveReady = false; endHead = false; readyDelay = 0; diskPos = 0; gapEnded = false; byteFlag = false; }
+            if (!(val & 0x40)) gapEnded = false;
+            diskIrqPending = false;
+            fdsLog('$4025 <= $' + hx(val) + (driveMotor ? ' (motor on)' : ' (motor off)'));
+            break;
+        }
+        case 0x4026: extOut = val; break;
+    }
+}
+
+function tickFDS(cycles) {
+    for (let i = 0; i < cycles; i++) {
+        if (timerIrqEnabled) {
+            if (timerCounter === 0) {
+                timerIrqPending = true;
+                timerCounter = timerReload;
+                if (!timerRepeat) timerIrqEnabled = false;
+            } else timerCounter--;
+        }
+    }
+    if (!diskInserted || !fdsData || !driveMotor) return;
+    if (readyDelay > 0) {
+        readyDelay -= cycles;
+        if (readyDelay <= 0) {
+            readyDelay = 0; driveReady = true; endHead = false; diskPos = 0; gapEnded = false; byteTimer = 149;
+            fdsLog('disk: drive ready');
+        }
+        return;
+    }
+    if (!driveReady) return;
+    byteTimer -= cycles;
+    while (byteTimer <= 0) {
+        byteTimer += 149;
+        if (diskPos >= fdsData.length) {
+            driveReady = false; endHead = true; readyDelay = 50000; gapEnded = false;
+            fdsLog('disk: reached end of disk, rewinding');
+            break;
+        }
+        const b = fdsData[diskPos++];
+        if (!(ctl4025 & 0x04)) continue;
+        if (!(ctl4025 & 0x40)) { gapEnded = false; continue; }
+        if (!gapEnded) { if (b !== 0) { gapEnded = true; newBlock = true; } continue; }
+        dataReg = b; byteFlag = true;
+        if (newBlock) { newBlock = false; fdsLog('disk: block $' + hx(b) + ' @' + (diskPos - 1)); }
+        if ((ctl4025 & 0x80) && diskIoEnabled) diskIrqPending = true;
+    }
+}
+
+const PPU = {
+    ctrl:0, mask:0, status:0, oamAddr:0,
+    oam: new Uint8Array(256),
+    vramAddr:0, tempAddr:0, renderAddr:0, scrollX:0, scrollY:0, fineX:0,
+    writeToggle:false,
+    vram: new Uint8Array(0x4000),
+    palette: new Uint8Array(32),
+    bufferedData: 0
+};
+
+function ppuRead(addr) {
+    addr &= 0x3FFF;
+    if (addr < 0x2000) return PPU.vram[addr];
+    if (addr < 0x3F00) {
+        const a = addr & 0x0FFF, t = (a >> 10) & 3;
+        return PPU.vram[0x2000 + ntOffset(t) + (a & 0x3FF)];
+    }
+    let p = addr & 0x1F; if (p >= 0x10 && (p & 3) === 0) p -= 0x10;
+    return PPU.palette[p];
+}
+
+function ppuWrite(addr, val) {
+    addr &= 0x3FFF; val &= 0xFF;
+    if (addr < 0x2000) { PPU.vram[addr] = val; return; }
+    if (addr < 0x3F00) {
+        const a = addr & 0x0FFF, t = (a >> 10) & 3;
+        PPU.vram[0x2000 + ntOffset(t) + (a & 0x3FF)] = val;
+        return;
+    }
+    let p = addr & 0x1F; if (p >= 0x10 && (p & 3) === 0) p -= 0x10;
+    PPU.palette[p] = val & 0x3F;
+}
+
+function ppuReadReg(addr) {
+    switch (addr & 7) {
+        case 2: {
+            const v = PPU.status;
+            PPU.status &= ~0x80;
+            PPU.writeToggle = false;
+            return v;
+        }
+        case 4: return PPU.oam[PPU.oamAddr];
+        case 7: {
+            let v = PPU.bufferedData;
+            PPU.bufferedData = ppuRead(PPU.vramAddr);
+            if ((PPU.vramAddr & 0x3F00) === 0x3F00) v = PPU.bufferedData;
+            PPU.vramAddr = (PPU.vramAddr + ((PPU.ctrl & 0x04) ? 32 : 1)) & 0x3FFF;
+            return v;
+        }
+    }
+    return 0;
+}
+
+function ppuWriteReg(addr, val) {
+    val &= 0xFF;
+    switch (addr & 7) {
+        case 0: {
+            const oldCtrl = PPU.ctrl;
+            PPU.ctrl = val;
+            PPU.tempAddr = (PPU.tempAddr & 0xF3FF) | ((val & 0x03) << 10);
+            if ((val & 0x80) && !(oldCtrl & 0x80) && (PPU.status & 0x80)) CPU.nmiPending = true;
+            break;
+        }
+        case 1: PPU.mask = val; break;
+        case 3: PPU.oamAddr = val; break;
+        case 4: PPU.oam[PPU.oamAddr++] = val; break;
+        case 5:
+            if (!PPU.writeToggle) {
+                PPU.scrollX = val; PPU.fineX = val & 7;
+                PPU.tempAddr = (PPU.tempAddr & ~0x1F) | (val >> 3);
+            } else {
+                PPU.scrollY = val;
+                PPU.tempAddr = (PPU.tempAddr & ~0x73E0) | ((val & 0x07) << 12) | ((val >> 3) << 5);
+            }
+            PPU.writeToggle = !PPU.writeToggle;
+            break;
+        case 6:
+            if (!PPU.writeToggle) {
+                PPU.tempAddr = (PPU.tempAddr & 0x00FF) | ((val & 0x3F) << 8);
+            } else {
+                PPU.tempAddr = (PPU.tempAddr & 0xFF00) | val;
+                PPU.vramAddr = PPU.tempAddr;
+                PPU.renderAddr = PPU.tempAddr;
+            }
+            PPU.writeToggle = !PPU.writeToggle;
+            break;
+        case 7:
+            ppuWrite(PPU.vramAddr, val);
+            PPU.vramAddr = (PPU.vramAddr + ((PPU.ctrl & 0x04) ? 32 : 1)) & 0x3FFF;
+            break;
+    }
+}
+
+const NES_PALETTE = new Uint32Array([
+    0x666666,0x002A88,0x1412A7,0x3B00A4,0x5C007E,0x6E0040,0x6C0600,0x561D00,
+    0x333500,0x0B4800,0x005200,0x004F08,0x00404D,0x000000,0x000000,0x000000,
+    0xADADAD,0x155FD9,0x4240FF,0x7527FE,0xA01ACC,0xB71E7B,0xB53120,0x994E00,
+    0x6B6D00,0x388700,0x0C9300,0x008F32,0x007C8D,0x000000,0x000000,0x000000,
+    0xFFFEFF,0x64B0FF,0x9290FF,0xC676FF,0xF36AFF,0xFE6ECC,0xFE8170,0xEA9E22,
+    0xBCBE00,0x88D800,0x5CE430,0x45E082,0x48CDDE,0x4F4F4F,0x000000,0x000000,
+    0xFFFEFF,0xC0DFFF,0xD3D2FF,0xE8C8FF,0xFBC2FF,0xFEC4EA,0xFECCC5,0xF7D8A5,
+    0xE4E594,0xCFEF96,0xBDF4AB,0xB3F3CC,0xB5EBF2,0xB8B8B8,0x000000,0x000000,
+]);
+
+const PAL_RGBA = new Uint32Array(64);
+for (let i = 0; i < 64; i++) {
+    const c = NES_PALETTE[i];
+    PAL_RGBA[i] = (0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF)) >>> 0;
+}
+
+const bgOpaqueLine = new Uint8Array(256);
+const spriteLine   = new Uint8Array(256);
+
+function incRenderY() {
+    let v = PPU.renderAddr;
+    if ((v & 0x7000) !== 0x7000) {
+        v += 0x1000;
+    } else {
+        v &= ~0x7000;
+        let cy = (v >> 5) & 0x1F;
+        if (cy === 29) { cy = 0; v ^= 0x0800; }
+        else if (cy === 31) { cy = 0; }
+        else cy++;
+        v = (v & ~0x03E0) | (cy << 5);
+    }
+    PPU.renderAddr = v;
+}
+
+function renderScanline(y) {
+    const base = y * 256;
+    const mask = PPU.mask;
+    const bgOn = (mask & 0x08) !== 0;
+    const spOn = (mask & 0x10) !== 0;
+    const backdrop = PAL_RGBA[PPU.palette[0] & 0x3F];
+
+    if (bgOn) {
+        const showLeftBG = (mask & 0x02) !== 0;
+        const v = PPU.renderAddr;
+        const ntBase = (v >> 10) & 3;
+        const ntY = (ntBase >> 1) & 1;
+        const tileRow = (v >> 5) & 31;
+        const fineY = (v >> 12) & 7;
+        const patternBase = (PPU.ctrl & 0x10) ? 0x1000 : 0x0000;
+        const scrollX = ((v & 31) << 3) | PPU.fineX;
+        const rowOffset = tileRow * 32;
+        const attrRow = (tileRow >> 2) << 3;
+        const rowPalShift = (tileRow & 2) << 1;
+
+        for (let x = 0; x < 256; x++) {
+            if (x < 8 && !showLeftBG) { frameBuffer[base + x] = backdrop; bgOpaqueLine[x] = 0; continue; }
+            const px = x + scrollX;
+            const ntX = (ntBase & 1) ^ ((px >> 8) & 1);
+            const tileCol = (px >> 3) & 31;
+            const nt = ntX | (ntY << 1);
+            const ntAddr = 0x2000 + ntOffset(nt);
+            const tile = PPU.vram[ntAddr + rowOffset + tileCol];
+            const attr = PPU.vram[ntAddr + 0x3C0 + attrRow + (tileCol >> 2)];
+            const pal = (attr >> (rowPalShift | (tileCol & 2))) & 3;
+            const patAddr = patternBase + tile * 16 + fineY;
+            const bit = 7 - (px & 7);
+            const p = ((PPU.vram[patAddr] >> bit) & 1) | (((PPU.vram[patAddr + 8] >> bit) & 1) << 1);
+            if (p === 0) {
+                frameBuffer[base + x] = backdrop;
+                bgOpaqueLine[x] = 0;
+            } else {
+                frameBuffer[base + x] = PAL_RGBA[PPU.palette[pal * 4 + p] & 0x3F];
+                bgOpaqueLine[x] = 1;
+            }
+        }
+    } else {
+        for (let x = 0; x < 256; x++) { frameBuffer[base + x] = backdrop; bgOpaqueLine[x] = 0; }
+    }
+
+    if (!spOn) return;
+
+    const showLeftSP = (mask & 0x04) !== 0;
+    const size16 = (PPU.ctrl & 0x20) !== 0;
+    const spBase = (PPU.ctrl & 0x08) ? 0x1000 : 0x0000;
+    spriteLine.fill(0);
+
+    for (let i = 0; i < 64; i++) {
+        const sy = PPU.oam[i * 4];
+        if (sy >= 0xEF) continue;
+        const top = sy + 1;
+        const h = size16 ? 16 : 8;
+        if (y < top || y >= top + h) continue;
+
+        const tile = PPU.oam[i * 4 + 1];
+        const attr = PPU.oam[i * 4 + 2];
+        const sx = PPU.oam[i * 4 + 3];
+
+        let row = y - top;
+        if (attr & 0x80) row = h - 1 - row;
+
+        let patAddr;
+        if (size16) {
+            const bank = (tile & 1) ? 0x1000 : 0x0000;
+            patAddr = bank + (tile & 0xFE) * 16 + (row >= 8 ? 16 : 0) + (row & 7);
+        } else {
+            patAddr = spBase + tile * 16 + (row & 7);
+        }
+        const lo = PPU.vram[patAddr];
+        const hi = PPU.vram[patAddr + 8];
+
+        const behind = (attr & 0x20) !== 0;
+        const palBase = 0x10 + (attr & 3) * 4;
+        const flipH = attr & 0x40;
+
+        for (let px = 0; px < 8; px++) {
+            const x = sx + px;
+            if (x >= 256) break;
+            if (x < 8 && !showLeftSP) continue;
+            const bit = flipH ? px : 7 - px;
+            const p = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+            if (p === 0) continue;
+
+            if (i === 0 && x < 255 && bgOpaqueLine[x]) PPU.status |= 0x40;
+
+            if (spriteLine[x]) continue;
+            spriteLine[x] = 1;
+            if (behind && bgOpaqueLine[x]) continue;
+            frameBuffer[base + x] = PAL_RGBA[PPU.palette[palBase + p] & 0x3F];
+        }
+    }
+}
+
+// ================= AUDIO =================
+const CPU_HZ = 1789773;
+const LEN_TABLE = [10,254,20,2,40,4,80,6,160,8,60,10,14,12,26,14,12,16,24,18,48,20,96,22,192,24,72,26,16,28,32,30];
+const DUTY = [[0,1,0,0,0,0,0,0],[0,1,1,0,0,0,0,0],[0,1,1,1,1,0,0,0],[1,0,0,1,1,1,1,1]];
+const NOISE_P = [4,8,16,32,64,96,128,160,202,254,380,508,762,1016,2034,4068];
+const TRI_SEQ = []; for (let i = 0; i < 32; i++) TRI_SEQ.push(i < 16 ? 15 - i : i - 16);
+const A = {}, F = {};
+const mkPulse = () => ({en:false,duty:0,timer:0,tcnt:0,seq:0,len:0,halt:false,cv:false,vol:0,es:false,ed:0,ec:0,swEn:false,swP:0,swNeg:false,swSh:0,swReload:false,swDiv:0});
+
+function apuReset() {
+    A.p = [mkPulse(), mkPulse()];
+    A.t = {en:false,timer:0,tcnt:0,seq:0,len:0,halt:false,linReload:0,linCnt:0,linFlag:false};
+    A.n = {en:false,mode:false,period:4,tcnt:0,shift:1,len:0,halt:false,cv:false,vol:0,es:false,ed:0,ec:0};
+    A.fc = 0; A.fstep = 0; A.five = false;
+    Object.assign(F, {wave:new Uint8Array(64),wen:false,freq:0,halt:true,envOff:false,phase:0,
+        gain:0,vOff:true,vUp:false,vSpeed:0,vTick:0,envSpeed:0xE8,master:1,
+        mgain:0,mOff:true,mUp:false,mSpeed:0,mTick:0,mc:0,mfreq:0,mHalt:true,macc:0,
+        mtab:new Uint8Array(64),wpos:0,spos:0});
+}
+apuReset();
+
+function envClock(c) {
+    if (c.es) { c.es = false; c.ec = 15; c.ed = c.vol; }
+    else if (c.ed > 0) c.ed--;
+    else { c.ed = c.vol; if (c.ec > 0) c.ec--; else if (c.halt) c.ec = 15; }
+}
+function sweepTarget(c, i) {
+    const d = c.timer >> c.swSh;
+    return c.swNeg ? c.timer - d - (i === 0 ? 1 : 0) : c.timer + d;
+}
+function sweepClock(c, i) {
+    const tg = sweepTarget(c, i);
+    if (c.swDiv === 0 && c.swEn && c.swSh > 0 && c.timer >= 8 && tg <= 0x7FF) c.timer = tg;
+    if (c.swDiv === 0 || c.swReload) { c.swDiv = c.swP; c.swReload = false; } else c.swDiv--;
+}
+function quarterFrame() {
+    envClock(A.p[0]); envClock(A.p[1]); envClock(A.n);
+    const t = A.t;
+    if (t.linFlag) t.linCnt = t.linReload; else if (t.linCnt > 0) t.linCnt--;
+    if (!t.halt) t.linFlag = false;
+}
+function halfFrame() {
+    for (const c of [A.p[0], A.p[1], A.t, A.n]) if (!c.halt && c.len > 0) c.len--;
+    sweepClock(A.p[0], 0); sweepClock(A.p[1], 1);
+}
+function frameStep() {
+    const s = A.fstep;
+    if (!A.five) { quarterFrame(); if (s === 1 || s === 3) halfFrame(); A.fstep = (s + 1) & 3; }
+    else { if (s !== 3) quarterFrame(); if (s === 1 || s === 4) halfFrame(); A.fstep = (s + 1) % 5; }
+}
+
+function apuWrite(a, v) {
+    const c = a < 0x4008 ? A.p[(a >> 2) & 1] : null, nz = A.n, t = A.t;
+    switch (a) {
+        case 0x4000: case 0x4004: c.duty = v >> 6; c.halt = !!(v & 0x20); c.cv = !!(v & 0x10); c.vol = v & 15; break;
+        case 0x4001: case 0x4005: c.swEn = !!(v & 0x80); c.swP = (v >> 4) & 7; c.swNeg = !!(v & 8); c.swSh = v & 7; c.swReload = true; break;
+        case 0x4002: case 0x4006: c.timer = (c.timer & 0x700) | v; break;
+        case 0x4003: case 0x4007: c.timer = (c.timer & 0xFF) | ((v & 7) << 8); if (c.en) c.len = LEN_TABLE[v >> 3]; c.seq = 0; c.es = true; break;
+        case 0x4008: t.halt = !!(v & 0x80); t.linReload = v & 0x7F; break;
+        case 0x400A: t.timer = (t.timer & 0x700) | v; break;
+        case 0x400B: t.timer = (t.timer & 0xFF) | ((v & 7) << 8); if (t.en) t.len = LEN_TABLE[v >> 3]; t.linFlag = true; break;
+        case 0x400C: nz.halt = !!(v & 0x20); nz.cv = !!(v & 0x10); nz.vol = v & 15; break;
+        case 0x400E: nz.mode = !!(v & 0x80); nz.period = NOISE_P[v & 15]; break;
+        case 0x400F: if (nz.en) nz.len = LEN_TABLE[v >> 3]; nz.es = true; break;
+        case 0x4015:
+            A.p[0].en = !!(v & 1); A.p[1].en = !!(v & 2); t.en = !!(v & 4); nz.en = !!(v & 8);
+            if (!A.p[0].en) A.p[0].len = 0; if (!A.p[1].en) A.p[1].len = 0;
+            if (!t.en) t.len = 0; if (!nz.en) nz.len = 0;
+            break;
+        case 0x4017: A.five = !!(v & 0x80); A.fc = 0; A.fstep = 0; if (A.five) { quarterFrame(); halfFrame(); } break;
+    }
+}
+function apuRead() {
+    return (A.p[0].len > 0 ? 1 : 0) | (A.p[1].len > 0 ? 2 : 0) | (A.t.len > 0 ? 4 : 0) | (A.n.len > 0 ? 8 : 0);
+}
+
+function fdsWrite(a, v) {
+    if (a < 0x4080) { if (F.wen) F.wave[a - 0x4040] = v & 0x3F; return; }
+    switch (a) {
+        case 0x4080: F.vOff = !!(v & 0x80); F.vUp = !!(v & 0x40); F.vSpeed = v & 0x3F; F.vTick = 0; if (F.vOff) F.gain = Math.min(32, v & 0x3F); break;
+        case 0x4082: F.freq = (F.freq & 0xF00) | v; break;
+        case 0x4083: F.freq = (F.freq & 0xFF) | ((v & 0xF) << 8); F.halt = !!(v & 0x80); F.envOff = !!(v & 0x40);
+                     if (F.halt) F.phase = 0; if (F.envOff) { F.vTick = 0; F.mTick = 0; } break;
+        case 0x4084: F.mOff = !!(v & 0x80); F.mUp = !!(v & 0x40); F.mSpeed = v & 0x3F; F.mTick = 0; if (F.mOff) F.mgain = Math.min(32, v & 0x3F); break;
+        case 0x4085: { const m = v & 0x7F; F.mc = m >= 64 ? m - 128 : m; break; }
+        case 0x4086: F.mfreq = (F.mfreq & 0xF00) | v; break;
+        case 0x4087: F.mfreq = (F.mfreq & 0xFF) | ((v & 0xF) << 8); F.mHalt = !!(v & 0x80); if (F.mHalt) { F.macc = 0; F.spos = 0; } break;
+        case 0x4088: if (F.mHalt) { F.mtab[F.wpos] = v & 7; F.mtab[(F.wpos + 1) & 63] = v & 7; F.wpos = (F.wpos + 2) & 63; } break;
+        case 0x4089: F.wen = !!(v & 0x80); F.master = [1, 2/3, 1/2, 2/5][v & 3]; break;
+        case 0x408A: F.envSpeed = v; break;
+    }
+}
+function modStep() {
+    const t = F.mtab[F.spos]; F.spos = (F.spos + 1) & 63;
+    if (t === 4) F.mc = 0; else F.mc += [0, 1, 2, 4, 0, -4, -2, -1][t];
+    if (F.mc > 63) F.mc -= 128; else if (F.mc < -64) F.mc += 128;
+}
+function fdsModPitch() {
+    let temp = F.mc * Math.min(F.mgain, 32);
+    let rem = temp & 0xF; temp >>= 4;
+    if (rem > 0 && !(temp & 0x80)) temp += (F.mc < 0) ? -1 : 2;
+    if (temp >= 192) temp -= 256; else if (temp < -64) temp += 256;
+    let m = F.freq * temp;
+    rem = m & 0x3F; m >>= 6; if (rem >= 32) m++;
+    return m;
+}
+
+function apuSample(dt) {
+    A.fc += dt; while (A.fc >= 7457.5) { A.fc -= 7457.5; frameStep(); }
+    let ps = 0;
+    for (let i = 0; i < 2; i++) {
+        const c = A.p[i], per = (c.timer + 1) * 2;
+        c.tcnt += dt;
+        if (c.tcnt >= per) { const k = (c.tcnt / per) | 0; c.tcnt -= k * per; c.seq = (c.seq + k) & 7; }
+        if (c.en && c.len > 0 && c.timer >= 8 && sweepTarget(c, i) <= 0x7FF) ps += DUTY[c.duty][c.seq] * (c.cv ? c.vol : c.ec);
+    }
+    const t = A.t, tp = t.timer + 1;
+    t.tcnt += dt;
+    if (t.tcnt >= tp) { const k = (t.tcnt / tp) | 0; t.tcnt -= k * tp; if (t.len > 0 && t.linCnt > 0) t.seq = (t.seq + k) & 31; }
+    const tri = (t.en && t.len > 0 && t.linCnt > 0 && t.timer >= 2) ? TRI_SEQ[t.seq] : 0;
+    const nz = A.n;
+    nz.tcnt += dt;
+    while (nz.tcnt >= nz.period) {
+        nz.tcnt -= nz.period;
+        const fb = (nz.shift & 1) ^ ((nz.shift >> (nz.mode ? 6 : 1)) & 1);
+        nz.shift = (nz.shift >> 1) | (fb << 14);
+    }
+    const noi = (nz.en && nz.len > 0 && !(nz.shift & 1)) ? (nz.cv ? nz.vol : nz.ec) : 0;
+
+    if (!F.halt && !F.envOff) {
+        if (!F.vOff) { F.vTick += dt; const per = 8 * (F.envSpeed + 1) * (F.vSpeed + 1);
+            while (F.vTick >= per) { F.vTick -= per; if (F.vUp) { if (F.gain < 32) F.gain++; } else if (F.gain > 0) F.gain--; } }
+        if (!F.mOff) { F.mTick += dt; const per = 8 * (F.envSpeed + 1) * (F.mSpeed + 1);
+            while (F.mTick >= per) { F.mTick -= per; if (F.mUp) { if (F.mgain < 32) F.mgain++; } else if (F.mgain > 0) F.mgain--; } }
+    }
+    if (!F.halt && !F.mHalt && F.mfreq > 0) { F.macc += F.mfreq * dt; while (F.macc >= 65536) { F.macc -= 65536; modStep(); } }
+    if (!F.halt && !F.wen) {
+        let f = F.freq; if (!F.mHalt) f += fdsModPitch();
+        if (f > 0) F.phase = (F.phase + f * dt) % 16777216;
+    }
+    const fds = (F.wave[(F.phase / 262144) & 63] * Math.min(F.gain, 32) / 32 / 63) * F.master * 0.2;
+
+    return 0.00752 * ps + 0.00851 * tri + 0.00494 * noi + fds;
+}
+
+let actx = null, abuf = new Float32Array(8192), aw = 0, ar = 0, cps = CPU_HZ / 44100, cAcc = 0, hpIn = 0, hpOut = 0;
+function audioInit() {
+    if (actx) { actx.resume(); return; }
+    try {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        cps = CPU_HZ / actx.sampleRate;
+        const sp = actx.createScriptProcessor(2048, 0, 1);
+        sp.onaudioprocess = e => {
+            const o = e.outputBuffer.getChannelData(0);
+            for (let i = 0; i < o.length; i++) {
+                if (ar !== aw) { o[i] = abuf[ar]; ar = (ar + 1) & 8191; } else o[i] = 0;
+            }
+        };
+        sp.connect(actx.destination);
+        window._audioNode = sp;
+        log('Audio started @ ' + actx.sampleRate + ' Hz');
+    } catch (err) { log('Audio init failed: ' + err.message); }
+}
+function audioAdvance(cycles) {
+    cAcc += cycles;
+    while (cAcc >= cps) {
+        cAcc -= cps;
+        const x = apuSample(cps);
+        hpOut = x - hpIn + 0.995 * hpOut; hpIn = x;
+        if (actx && ((aw + 1) & 8191) !== ar) { abuf[aw] = Math.max(-1, Math.min(1, hpOut * 2)); aw = (aw + 1) & 8191; }
+    }
+}
+
+// ===================== CONTROLLER =====================
+const BTN = { A:0x01, B:0x02, SELECT:0x04, START:0x08, UP:0x10, DOWN:0x20, LEFT:0x40, RIGHT:0x80 };
+const KEYMAP = {
+    ArrowUp:BTN.UP, ArrowDown:BTN.DOWN, ArrowLeft:BTN.LEFT, ArrowRight:BTN.RIGHT,
+    KeyX:BTN.A, KeyZ:BTN.B, Enter:BTN.START, ShiftLeft:BTN.SELECT, ShiftRight:BTN.SELECT,
+    KeyS:BTN.START, KeyA:BTN.SELECT
+};
+const controller = { buttons: 0, strobe: false, shift: 0 };
+const padSrc = { kb: 0, touch: 0, gp: 0 };
+function applyPad() {
+    controller.buttons = padSrc.kb | padSrc.touch | padSrc.gp;
+    document.querySelectorAll('.pbtn').forEach(el =>
+        el.classList.toggle('on', (controller.buttons & BTN[el.dataset.btn]) !== 0));
+}
+const isTyping = e => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+document.addEventListener('keydown', e => {
+    if (isTyping(e)) return;
+    if (e.code === 'F5') { e.preventDefault(); quickSave(0); return; }
+    if (e.code === 'F6') { e.preventDefault(); quickSave(1); return; }
+    if (e.code === 'F7') { e.preventDefault(); quickSave(2); return; }
+    if (e.code === 'F8') { e.preventDefault(); quickLoad(0); return; }
+    if (e.code === 'F9') { e.preventDefault(); quickLoad(1); return; }
+    if (e.code === 'F10') { e.preventDefault(); quickLoad(2); return; }
+    if (e.code === 'KeyF') { e.preventDefault(); toggleFullscreen(); return; }
+    if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (running) { consoleReset(); updateDebuggerUI(); } return; }
+    if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleDisk(); return; }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') { e.preventDefault(); changeSpeed(SPEED_STEP); return; }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') { e.preventDefault(); changeSpeed(-SPEED_STEP); return; }
+    const b = KEYMAP[e.code];
+    if (b) { padSrc.kb |= b; applyPad(); e.preventDefault(); }
+});
+document.addEventListener('keyup', e => {
+    if (isTyping(e)) return;
+    const b = KEYMAP[e.code];
+    if (b) { padSrc.kb &= ~b; applyPad(); e.preventDefault(); }
+});
+window.addEventListener('blur', () => { padSrc.kb = 0; padSrc.touch = 0; applyPad(); });
+document.querySelectorAll('.pbtn').forEach(el => {
+    const bit = BTN[el.dataset.btn];
+    el.addEventListener('pointerdown', e => { e.preventDefault(); padSrc.touch |= bit; applyPad(); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(t =>
+        el.addEventListener(t, e => { e.preventDefault(); padSrc.touch &= ~bit; applyPad(); }));
+});
+function pollGamepad() {
+    let b = 0;
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const g of pads) {
+        if (!g) continue;
+        const p = i => g.buttons[i] && g.buttons[i].pressed;
+        if (p(1) || p(3)) b |= BTN.A;
+        if (p(0) || p(2)) b |= BTN.B;
+        if (p(8)) b |= BTN.SELECT;
+        if (p(9)) b |= BTN.START;
+        if (p(12) || g.axes[1] < -0.5) b |= BTN.UP;
+        if (p(13) || g.axes[1] > 0.5) b |= BTN.DOWN;
+        if (p(14) || g.axes[0] < -0.5) b |= BTN.LEFT;
+        if (p(15) || g.axes[0] > 0.5) b |= BTN.RIGHT;
+    }
+    if (b !== padSrc.gp) { padSrc.gp = b; applyPad(); }
+}
+function controllerWrite(v) {
+    const was = controller.strobe;
+    controller.strobe = (v & 1) !== 0;
+    if (controller.strobe || was) controller.shift = controller.buttons;
+}
+function controllerRead() {
+    if (controller.strobe) return controller.buttons & 1;
+    const v = controller.shift & 1;
+    controller.shift = (controller.shift >> 1) | 0x80;
+    return v;
+}
+
+const CPU = { a:0, x:0, y:0, sp:0xFD, pc:0xE000, p:0x24, cycles:2, nmiPending:false, totalCycles:0 };
+const FLAG_C=0x01, FLAG_Z=0x02, FLAG_I=0x04, FLAG_D=0x08, FLAG_B=0x10, FLAG_U=0x20, FLAG_V=0x40, FLAG_N=0x80;
+const setFlag=(f,v)=>v?CPU.p|=f:CPU.p&=~f;
+const getFlag=f=>(CPU.p&f)?1:0;
+const push=v=>{mem[0x100+CPU.sp]=v&0xFF;CPU.sp=(CPU.sp-1)&0xFF;};
+const pop=()=>{CPU.sp=(CPU.sp+1)&0xFF;return mem[0x100+CPU.sp];};
+
+function read8(a) {
+    a &= 0xFFFF;
+    if (a >= 0x4020 && a <= 0x4092) return readFDS(a);
+    if (a >= 0x2000 && a <= 0x2007) return ppuReadReg(a);
+    if (a === 0x4016) return controllerRead();
+    if (a === 0x4015) return apuRead();
+    return mem[a];
+}
+
+function write8(a, v) {
+    a &= 0xFFFF; v &= 0xFF;
+    if (a >= 0x4020 && a <= 0x4092) { writeFDS(a, v); return; }
+    if (a >= 0x2000 && a <= 0x2007) { ppuWriteReg(a, v); return; }
+    if (a === 0x4014) { for (let i=0;i<256;i++) PPU.oam[i]=mem[(v<<8)+i]; return; }
+    if (a === 0x4016) { controllerWrite(v); return; }
+    if (a >= 0x4000 && a <= 0x4017) { apuWrite(a, v); return; }
+    mem[a] = v;
+}
+
+const read16 = a => read8(a) | (read8((a+1)&0xFFFF)<<8);
+const read16zp = a => read8(a&0xFF) | (read8((a+1)&0xFF)<<8);
+
+function opADC(v) {
+    const c = getFlag(FLAG_C);
+    const s = CPU.a + v + c;
+    setFlag(FLAG_C, s > 0xFF);
+    const r = s & 0xFF;
+    setFlag(FLAG_V, (~(CPU.a ^ v) & (CPU.a ^ r) & 0x80) !== 0);
+    CPU.a = r; setFlag(FLAG_Z, CPU.a===0); setFlag(FLAG_N, (CPU.a&0x80)!==0);
+}
+
+function opSBC(v) {
+    const c = getFlag(FLAG_C);
+    const d = CPU.a - v - (1 - c);
+    setFlag(FLAG_C, d >= 0);
+    const r = d & 0xFF;
+    setFlag(FLAG_V, ((CPU.a ^ v) & (CPU.a ^ r) & 0x80) !== 0);
+    CPU.a = r; setFlag(FLAG_Z, CPU.a===0); setFlag(FLAG_N, (CPU.a&0x80)!==0);
+}
+
+function opCMP(reg, v) {
+    const d = reg - v;
+    setFlag(FLAG_C, d >= 0); setFlag(FLAG_Z, (d&0xFF)===0); setFlag(FLAG_N, (d&0x80)!==0);
+}
+
+const opASL = v => { setFlag(FLAG_C, (v&0x80)!==0); v = (v<<1)&0xFF; setFlag(FLAG_Z, v===0); setFlag(FLAG_N, (v&0x80)!==0); return v; };
+const opLSR = v => { setFlag(FLAG_C, (v&1)!==0); v = (v>>1)&0xFF; setFlag(FLAG_Z, v===0); setFlag(FLAG_N, false); return v; };
+const opROL = v => { const c = getFlag(FLAG_C); setFlag(FLAG_C, (v&0x80)!==0); v = ((v<<1)|c)&0xFF; setFlag(FLAG_Z, v===0); setFlag(FLAG_N, (v&0x80)!==0); return v; };
+const opROR = v => { const c = getFlag(FLAG_C); setFlag(FLAG_C, (v&1)!==0); v = ((v>>1)|(c<<7))&0xFF; setFlag(FLAG_Z, v===0); setFlag(FLAG_N, (v&0x80)!==0); return v; };
+
+function branch(cond) { 
+    let o = read8(CPU.pc++); 
+    if (o & 0x80) o -= 256; 
+    if (cond) { CPU.cycles++; CPU.pc = (CPU.pc + o) & 0xFFFF; } 
+}
+
+const CYC = [
+    7,6,2,8,3,3,5,5,3,2,2,2,4,4,6,6,
+    2,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7,
+    6,6,2,8,3,3,5,5,4,2,2,2,4,4,6,6,
+    2,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7,
+    6,6,2,8,3,3,5,5,3,2,2,2,3,4,6,6,
+    2,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7,
+    6,6,2,8,3,3,5,5,4,2,2,2,5,4,6,6,
+    2,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7,
+    2,6,2,6,3,3,3,3,2,2,2,2,4,4,4,4,
+    2,6,2,6,4,4,4,4,2,5,2,5,5,5,5,5,
+    2,6,2,6,3,3,3,3,2,2,2,2,4,4,4,4,
+    2,5,2,5,4,4,4,4,2,4,2,4,4,4,4,4,
+    2,6,2,8,3,3,5,5,2,2,2,2,4,4,6,6,
+    2,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7,
+    2,6,2,8,3,3,5,5,2,2,2,2,4,4,6,6,
+    2,5,2,8,4,4,6,6,2,4,2,7,4,4,7,7
+];
+
+function addCycles(n) { CPU.cycles += n; tickFDS(n); audioAdvance(n); CPU.totalCycles += n; }
+
+function stepCPU() {
+    const op = read8(CPU.pc++);
+    let a, v;
+    CPU.cycles = CYC[op];
+
+    switch (op) {
+        case 0xA9: CPU.a=read8(CPU.pc++); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xA5: CPU.a=read8(read8(CPU.pc++)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xB5: CPU.a=read8((read8(CPU.pc++)+CPU.x)&0xFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xAD: a=read16(CPU.pc); CPU.pc+=2; CPU.a=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xBD: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; CPU.a=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xB9: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; CPU.a=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xA1: a=read16zp((read8(CPU.pc++)+CPU.x)&0xFF); CPU.a=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xB1: a=(read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF; CPU.a=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        
+        case 0xA2: CPU.x=read8(CPU.pc++); setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0xA6: CPU.x=read8(read8(CPU.pc++)); setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0xB6: CPU.x=read8((read8(CPU.pc++)+CPU.y)&0xFF); setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0xAE: a=read16(CPU.pc); CPU.pc+=2; CPU.x=read8(a); setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0xBE: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; CPU.x=read8(a); setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+
+        case 0xA0: CPU.y=read8(CPU.pc++); setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+        case 0xA4: CPU.y=read8(read8(CPU.pc++)); setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+        case 0xB4: CPU.y=read8((read8(CPU.pc++)+CPU.x)&0xFF); setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+        case 0xAC: a=read16(CPU.pc); CPU.pc+=2; CPU.y=read8(a); setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+        case 0xBC: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; CPU.y=read8(a); setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+
+        case 0x85: write8(read8(CPU.pc++), CPU.a); break;
+        case 0x95: write8((read8(CPU.pc++)+CPU.x)&0xFF, CPU.a); break;
+        case 0x8D: a=read16(CPU.pc); CPU.pc+=2; write8(a, CPU.a); break;
+        case 0x9D: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; write8(a, CPU.a); break;
+        case 0x99: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; write8(a, CPU.a); break;
+        case 0x81: write8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF), CPU.a); break;
+        case 0x91: write8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF, CPU.a); break;
+        
+        case 0x86: write8(read8(CPU.pc++), CPU.x); break;
+        case 0x96: write8((read8(CPU.pc++)+CPU.y)&0xFF, CPU.x); break;
+        case 0x8E: a=read16(CPU.pc); CPU.pc+=2; write8(a, CPU.x); break;
+        
+        case 0x84: write8(read8(CPU.pc++), CPU.y); break;
+        case 0x94: write8((read8(CPU.pc++)+CPU.x)&0xFF, CPU.y); break;
+        case 0x8C: a=read16(CPU.pc); CPU.pc+=2; write8(a, CPU.y); break;
+
+        case 0xAA: CPU.x=CPU.a; setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0xA8: CPU.y=CPU.a; setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+        case 0x8A: CPU.a=CPU.x; setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x98: CPU.a=CPU.y; setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0xBA: CPU.x=CPU.sp; setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0x9A: CPU.sp=CPU.x; break;
+
+        case 0x48: push(CPU.a); break;
+        case 0x68: CPU.a=pop(); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x08: push(CPU.p|FLAG_B|FLAG_U); break;
+        case 0x28: CPU.p=(pop()&~FLAG_B)|FLAG_U; break;
+
+        case 0x69: opADC(read8(CPU.pc++)); break;
+        case 0x65: opADC(read8(read8(CPU.pc++))); break;
+        case 0x75: opADC(read8((read8(CPU.pc++)+CPU.x)&0xFF)); break;
+        case 0x6D: a=read16(CPU.pc); CPU.pc+=2; opADC(read8(a)); break;
+        case 0x7D: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; opADC(read8(a)); break;
+        case 0x79: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; opADC(read8(a)); break;
+        case 0x61: opADC(read8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF))); break;
+        case 0x71: opADC(read8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF)); break;
+
+        case 0xE9: case 0xEB: opSBC(read8(CPU.pc++)); break;
+        case 0xE5: opSBC(read8(read8(CPU.pc++))); break;
+        case 0xF5: opSBC(read8((read8(CPU.pc++)+CPU.x)&0xFF)); break;
+        case 0xED: a=read16(CPU.pc); CPU.pc+=2; opSBC(read8(a)); break;
+        case 0xFD: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; opSBC(read8(a)); break;
+        case 0xF9: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; opSBC(read8(a)); break;
+        case 0xE1: opSBC(read8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF))); break;
+        case 0xF1: opSBC(read8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF)); break;
+
+        case 0xC9: opCMP(CPU.a,read8(CPU.pc++)); break;
+        case 0xC5: opCMP(CPU.a,read8(read8(CPU.pc++))); break;
+        case 0xD5: opCMP(CPU.a,read8((read8(CPU.pc++)+CPU.x)&0xFF)); break;
+        case 0xCD: a=read16(CPU.pc); CPU.pc+=2; opCMP(CPU.a,read8(a)); break;
+        case 0xDD: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; opCMP(CPU.a,read8(a)); break;
+        case 0xD9: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; opCMP(CPU.a,read8(a)); break;
+        case 0xC1: opCMP(CPU.a,read8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF))); break;
+        case 0xD1: opCMP(CPU.a,read8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF)); break;
+        case 0xE0: opCMP(CPU.x,read8(CPU.pc++)); break;
+        case 0xE4: opCMP(CPU.x,read8(read8(CPU.pc++))); break;
+        case 0xEC: a=read16(CPU.pc); CPU.pc+=2; opCMP(CPU.x,read8(a)); break;
+        case 0xC0: opCMP(CPU.y,read8(CPU.pc++)); break;
+        case 0xC4: opCMP(CPU.y,read8(read8(CPU.pc++))); break;
+        case 0xCC: a=read16(CPU.pc); CPU.pc+=2; opCMP(CPU.y,read8(a)); break;
+
+        case 0x29: CPU.a&=read8(CPU.pc++); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x25: CPU.a&=read8(read8(CPU.pc++)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x35: CPU.a&=read8((read8(CPU.pc++)+CPU.x)&0xFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x2D: a=read16(CPU.pc); CPU.pc+=2; CPU.a&=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x3D: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; CPU.a&=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x39: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; CPU.a&=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x21: CPU.a&=read8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x31: CPU.a&=read8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+
+        case 0x09: CPU.a|=read8(CPU.pc++); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x05: CPU.a|=read8(read8(CPU.pc++)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x15: CPU.a|=read8((read8(CPU.pc++)+CPU.x)&0xFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x0D: a=read16(CPU.pc); CPU.pc+=2; CPU.a|=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x1D: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; CPU.a|=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x19: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; CPU.a|=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x01: CPU.a|=read8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x11: CPU.a|=read8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+
+        case 0x49: CPU.a^=read8(CPU.pc++); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x45: CPU.a^=read8(read8(CPU.pc++)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x55: CPU.a^=read8((read8(CPU.pc++)+CPU.x)&0xFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x4D: a=read16(CPU.pc); CPU.pc+=2; CPU.a^=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x5D: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; CPU.a^=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x59: a=(read16(CPU.pc)+CPU.y)&0xFFFF; CPU.pc+=2; CPU.a^=read8(a); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x41: CPU.a^=read8(read16zp((read8(CPU.pc++)+CPU.x)&0xFF)); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+        case 0x51: CPU.a^=read8((read16zp(read8(CPU.pc++))+CPU.y)&0xFFFF); setFlag(FLAG_Z,CPU.a===0); setFlag(FLAG_N,(CPU.a&0x80)!==0); break;
+
+        case 0x24: v=read8(read8(CPU.pc++)); setFlag(FLAG_Z,(CPU.a&v)===0); setFlag(FLAG_N,(v&0x80)!==0); setFlag(FLAG_V,(v&0x40)!==0); break;
+        case 0x2C: a=read16(CPU.pc); CPU.pc+=2; v=read8(a); setFlag(FLAG_Z,(CPU.a&v)===0); setFlag(FLAG_N,(v&0x80)!==0); setFlag(FLAG_V,(v&0x40)!==0); break;
+
+        case 0x0A: CPU.a=opASL(CPU.a); break;
+        case 0x06: a=read8(CPU.pc++); write8(a,opASL(read8(a))); break;
+        case 0x16: a=(read8(CPU.pc++)+CPU.x)&0xFF; write8(a,opASL(read8(a))); break;
+        case 0x0E: a=read16(CPU.pc); CPU.pc+=2; write8(a,opASL(read8(a))); break;
+        case 0x1E: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; write8(a,opASL(read8(a))); break;
+        
+        case 0x4A: CPU.a=opLSR(CPU.a); break;
+        case 0x46: a=read8(CPU.pc++); write8(a,opLSR(read8(a))); break;
+        case 0x56: a=(read8(CPU.pc++)+CPU.x)&0xFF; write8(a,opLSR(read8(a))); break;
+        case 0x4E: a=read16(CPU.pc); CPU.pc+=2; write8(a,opLSR(read8(a))); break;
+        case 0x5E: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; write8(a,opLSR(read8(a))); break;
+        
+        case 0x2A: CPU.a=opROL(CPU.a); break;
+        case 0x26: a=read8(CPU.pc++); write8(a,opROL(read8(a))); break;
+        case 0x36: a=(read8(CPU.pc++)+CPU.x)&0xFF; write8(a,opROL(read8(a))); break;
+        case 0x2E: a=read16(CPU.pc); CPU.pc+=2; write8(a,opROL(read8(a))); break;
+        case 0x3E: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; write8(a,opROL(read8(a))); break;
+        
+        case 0x6A: CPU.a=opROR(CPU.a); break;
+        case 0x66: a=read8(CPU.pc++); write8(a,opROR(read8(a))); break;
+        case 0x76: a=(read8(CPU.pc++)+CPU.x)&0xFF; write8(a,opROR(read8(a))); break;
+        case 0x6E: a=read16(CPU.pc); CPU.pc+=2; write8(a,opROR(read8(a))); break;
+        case 0x7E: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; write8(a,opROR(read8(a))); break;
+
+        case 0xE6: a=read8(CPU.pc++); v=(read8(a)+1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        case 0xF6: a=(read8(CPU.pc++)+CPU.x)&0xFF; v=(read8(a)+1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        case 0xEE: a=read16(CPU.pc); CPU.pc+=2; v=(read8(a)+1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        case 0xFE: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; v=(read8(a)+1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        
+        case 0xC6: a=read8(CPU.pc++); v=(read8(a)-1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        case 0xD6: a=(read8(CPU.pc++)+CPU.x)&0xFF; v=(read8(a)-1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        case 0xCE: a=read16(CPU.pc); CPU.pc+=2; v=(read8(a)-1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        case 0xDE: a=(read16(CPU.pc)+CPU.x)&0xFFFF; CPU.pc+=2; v=(read8(a)-1)&0xFF; write8(a,v); setFlag(FLAG_Z,v===0); setFlag(FLAG_N,(v&0x80)!==0); break;
+        
+        case 0xE8: CPU.x=(CPU.x+1)&0xFF; setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0xC8: CPU.y=(CPU.y+1)&0xFF; setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+        case 0xCA: CPU.x=(CPU.x-1)&0xFF; setFlag(FLAG_Z,CPU.x===0); setFlag(FLAG_N,(CPU.x&0x80)!==0); break;
+        case 0x88: CPU.y=(CPU.y-1)&0xFF; setFlag(FLAG_Z,CPU.y===0); setFlag(FLAG_N,(CPU.y&0x80)!==0); break;
+
+        case 0x10: branch(!getFlag(FLAG_N)); break;
+        case 0x30: branch(getFlag(FLAG_N)); break;
+        case 0x50: branch(!getFlag(FLAG_V)); break;
+        case 0x70: branch(getFlag(FLAG_V)); break;
+        case 0x90: branch(!getFlag(FLAG_C)); break;
+        case 0xB0: branch(getFlag(FLAG_C)); break;
+        case 0xD0: branch(!getFlag(FLAG_Z)); break;
+        case 0xF0: branch(getFlag(FLAG_Z)); break;
+
+        case 0x4C: CPU.pc=read16(CPU.pc); break;
+        case 0x6C: { const p=read16(CPU.pc); CPU.pc=read8(p)|(read8((p&0xFF00)|((p+1)&0xFF))<<8); break; }
+        case 0x20: { const t=read16(CPU.pc); const r=(CPU.pc+1)&0xFFFF; push((r>>8)&0xFF); push(r&0xFF); CPU.pc=t; break; }
+        case 0x60: { const lo=pop(); const hi=pop(); CPU.pc=((lo|(hi<<8))+1)&0xFFFF; break; }
+        case 0x40: { CPU.p=(pop()&~FLAG_B)|FLAG_U; const lo=pop(); const hi=pop(); CPU.pc=lo|(hi<<8); break; }
+
+        case 0x18: setFlag(FLAG_C,false); break;
+        case 0x38: setFlag(FLAG_C,true); break;
+        case 0x58: setFlag(FLAG_I,false); break;
+        case 0x78: setFlag(FLAG_I,true); break;
+        case 0xB8: setFlag(FLAG_V,false); break;
+        case 0xD8: setFlag(FLAG_D,false); break;
+        case 0xF8: setFlag(FLAG_D,true); break;
+
+        case 0xEA: break;
+        case 0x00:
+            CPU.pc=(CPU.pc+1)&0xFFFF;
+            push((CPU.pc>>8)&0xFF); push(CPU.pc&0xFF); push(CPU.p|FLAG_B|FLAG_U);
+            setFlag(FLAG_I,true);
+            CPU.pc=read16(0xFFFE);
+            break;
+
+        default:
+            log('UNKNOWN opcode 0x'+op.toString(16)+' at $'+((CPU.pc-1)&0xFFFF).toString(16).padStart(4,'0'));
+            running=false;
+            return CPU.cycles;
+    }
+
+    tickFDS(CPU.cycles);
+    audioAdvance(CPU.cycles);
+    CPU.totalCycles += CPU.cycles;
+
+    if ((timerIrqPending || diskIrqPending) && !getFlag(FLAG_I)) {
+        push((CPU.pc>>8)&0xFF); push(CPU.pc&0xFF); push(CPU.p|FLAG_U);
+        setFlag(FLAG_I,true);
+        CPU.pc = read16(0xFFFE);
+        addCycles(7);
+    }
+    if (CPU.nmiPending) {
+        CPU.nmiPending = false;
+        push((CPU.pc>>8)&0xFF); push(CPU.pc&0xFF); push(CPU.p|FLAG_U);
+        setFlag(FLAG_I,true);
+        CPU.pc = read16(0xFFFA);
+        addCycles(7);
+    }
+
+    return CPU.cycles;
+}
+
+const logBuffer = [];
+function log(msg) {
+    logBuffer.push(msg);
+    if (logBuffer.length > 300) logBuffer.shift();
+    const el = document.getElementById('log');
+    el.textContent = logBuffer.join('\n');
+    el.scrollTop = el.scrollHeight;
+}
+
+const regsSpans = document.querySelectorAll('#regsView span');
+function updateDebuggerUI() {
+    regsSpans[0].textContent = CPU.pc.toString(16).padStart(4, '0').toUpperCase();
+    regsSpans[1].textContent = CPU.sp.toString(16).padStart(2, '0').toUpperCase();
+    regsSpans[2].textContent = CPU.p.toString(16).padStart(2, '0').toUpperCase();
+    regsSpans[3].textContent = CPU.a.toString(16).padStart(2, '0').toUpperCase();
+    regsSpans[4].textContent = CPU.x.toString(16).padStart(2, '0').toUpperCase();
+    regsSpans[5].textContent = CPU.y.toString(16).padStart(2, '0').toUpperCase();
+    regsSpans[6].textContent = CPU.totalCycles;
+    
+    document.getElementById('cpuStatus').textContent = !running ? 'Stopped' : (paused ? 'Paused' : 'Running');
+    const diskState = !diskInserted ? 'no disk' : ((driveMotor ? 'motor ' : 'idle ') + (driveReady ? 'ready ' : 'wait ') + diskPos + '/' + (fdsData ? fdsData.length : 0));
+    document.getElementById('diskStatus').textContent = diskState;
+    updateHexEditor();
+}
+
+function updateHexEditor() {
+    const inputVal = document.getElementById('hexAddrInput').value;
+    let baseAddr = parseInt(inputVal, 16);
+    if (isNaN(baseAddr)) baseAddr = 0;
+    baseAddr &= 0xFFF8;
+
+    const tbody = document.getElementById('hexTableBody');
+    tbody.innerHTML = '';
+
+    for (let row = 0; row < 16; row++) {
+        const curAddr = (baseAddr + row * 8) & 0xFFFF;
+        let tr = document.createElement('tr');
+        
+        let tdAddr = document.createElement('td');
+        tdAddr.className = 'addr';
+        tdAddr.textContent = '$' + curAddr.toString(16).padStart(4, '0').toUpperCase();
+        tr.appendChild(tdAddr);
+
+        for (let col = 0; col < 8; col++) {
+            let tdCell = document.createElement('td');
+            tdCell.className = 'cell';
+            let targetAddr = (curAddr + col) & 0xFFFF;
+            tdCell.textContent = mem[targetAddr].toString(16).padStart(2, '0').toUpperCase();
+            tdCell.dataset.addr = targetAddr;
+            tdCell.addEventListener('click', () => startHexEdit(tdCell, targetAddr));
+            tr.appendChild(tdCell);
+        }
+        tbody.appendChild(tr);
+    }
+}
+
+function startHexEdit(cell, addr) {
+    if (cell.querySelector('input')) return;
+    const oldVal = mem[addr];
+    cell.classList.add('editing');
+    cell.textContent = '';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'hex-edit-input';
+    inp.maxLength = 2;
+    inp.value = oldVal.toString(16).padStart(2, '0').toUpperCase();
+    cell.appendChild(inp);
+    inp.focus();
+    inp.select();
+    const commit = () => {
+        const v = parseInt(inp.value, 16);
+        if (!isNaN(v)) {
+            mem[addr] = v & 0xFF;
+            const cheat = cheats.find(c => c.addr === addr && c.enabled);
+            if (cheat) cheat.val = mem[addr];
+        }
+        cell.classList.remove('editing');
+        cell.textContent = mem[addr].toString(16).padStart(2, '0').toUpperCase();
+    };
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cell.classList.remove('editing'); cell.textContent = oldVal.toString(16).padStart(2, '0').toUpperCase(); }
+    });
+}
+
+// ===================== CHEATS =====================
+function renderCheats() {
+    const list = document.getElementById('cheatList');
+    list.innerHTML = '';
+    if (cheats.length === 0) {
+        list.innerHTML = '<div style="font-size:11px;color:#555;padding:8px;">No cheats. Add one above.</div>';
+        return;
+    }
+    cheats.forEach((c, i) => {
+        const div = document.createElement('div');
+        div.className = 'cheat-item';
+        div.innerHTML = `
+            <span class="desc">$${c.addr.toString(16).padStart(4,'0').toUpperCase()} = $${c.val.toString(16).padStart(2,'0').toUpperCase()}</span>
+            <span>
+                <label style="font-size:10px;margin-right:6px;"><input type="checkbox" ${c.enabled?'checked':''} data-idx="${i}" class="cheat-toggle"> on</label>
+                <button data-idx="${i}" class="cheat-del">X</button>
+            </span>`;
+        list.appendChild(div);
+    });
+    list.querySelectorAll('.cheat-toggle').forEach(el => {
+        el.addEventListener('change', e => {
+            cheats[parseInt(e.target.dataset.idx)].enabled = e.target.checked;
+            applyCheats();
+        });
+    });
+    list.querySelectorAll('.cheat-del').forEach(el => {
+        el.addEventListener('click', e => {
+            cheats.splice(parseInt(e.target.dataset.idx), 1);
+            renderCheats();
+            applyCheats();
+        });
+    });
+}
+
+function applyCheats() {
+    if (!cheatsEnabled) return;
+    for (const c of cheats) {
+        if (c.enabled) mem[c.addr] = c.val;
+    }
+}
+
+document.getElementById('addCheatBtn').addEventListener('click', () => {
+    const addrStr = document.getElementById('cheatAddr').value.trim();
+    const valStr = document.getElementById('cheatVal').value.trim();
+    const addr = parseInt(addrStr, 16);
+    const val = parseInt(valStr, 16);
+    if (isNaN(addr) || addr < 0 || addr > 0xFFFF) { alert('Invalid address'); return; }
+    if (isNaN(val) || val < 0 || val > 0xFF) { alert('Invalid value'); return; }
+    cheats.push({ addr, val, enabled: true });
+    document.getElementById('cheatAddr').value = '';
+    document.getElementById('cheatVal').value = '';
+    renderCheats();
+    applyCheats();
+});
+
+document.getElementById('cheatEnabled').addEventListener('change', e => {
+    cheatsEnabled = e.target.checked;
+    applyCheats();
+});
+
+// ===================== TABS =====================
+const tabs = ['memPanel', 'cheatPanel', 'savePanel'];
+function showTab(panelId, tabId) {
+    tabs.forEach(t => document.getElementById(t).style.display = t === panelId ? '' : 'none');
+    ['tabMem','tabCheat','tabSave'].forEach(t => document.getElementById(t).classList.toggle('active', t === tabId));
+}
+document.getElementById('tabMem').addEventListener('click', () => showTab('memPanel', 'tabMem'));
+document.getElementById('tabCheat').addEventListener('click', () => { showTab('cheatPanel', 'tabCheat'); renderCheats(); });
+document.getElementById('tabSave').addEventListener('click', () => { showTab('savePanel', 'tabSave'); renderSaveSlots(); });
+
+// ===================== SPEED CONTROL =====================
+const speedBadge = document.getElementById('speedBadge');
+function updateSpeedDisplay() {
+    let label = speedMultiplier.toFixed(2);
+    if (speedMultiplier < 1) label = speedMultiplier.toFixed(2) + 'x';
+    else label = speedMultiplier.toFixed(1) + 'x';
+    speedBadge.textContent = label;
+    speedBadge.classList.toggle('fast', speedMultiplier > 1.0);
+    speedBadge.classList.toggle('slow', speedMultiplier < 1.0);
+}
+function changeSpeed(delta) {
+    speedMultiplier = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speedMultiplier + delta));
+    speedMultiplier = Math.round(speedMultiplier * 100) / 100;
+    updateSpeedDisplay();
+    log('Speed: ' + speedMultiplier.toFixed(2) + 'x');
+}
+document.getElementById('speedUpBtn').addEventListener('click', () => changeSpeed(SPEED_STEP));
+document.getElementById('slowDownBtn').addEventListener('click', () => changeSpeed(-SPEED_STEP));
+document.getElementById('speedResetBtn').addEventListener('click', () => {
+    speedMultiplier = 1.0;
+    updateSpeedDisplay();
+    log('Speed reset to 1x');
+});
+updateSpeedDisplay();
+
+// ===================== SCREEN SIZE / FULLSCREEN / SHADERS =====================
+const sizeSlider = document.getElementById('sizeSlider');
+const sizeLabel = document.getElementById('sizeLabel');
+const screenWrap = document.getElementById('screenWrap');
+const shaderSelect = document.getElementById('shaderSelect');
+const shaderOverlay = document.getElementById('shaderOverlay');
+
+sizeSlider.addEventListener('input', e => {
+    const px = parseInt(e.target.value, 10);
+    const h = Math.round(px * 240 / 256);
+    canvas.style.width = px + 'px';
+    canvas.style.height = h + 'px';
+    sizeLabel.textContent = px + 'px';
+});
+
+const SHADER_CLASSES = ['shader-crt','shader-scanlines','shader-scanlines-strong','shader-lcd','shader-glow','shader-vignette','shader-classic','shader-smooth'];
+const OVERLAY_CLASSES = ['crt','scanlines','scanlines-strong','lcd','glow','vignette','classic'];
+function applyShader(name) {
+    canvas.classList.remove(...SHADER_CLASSES);
+    shaderOverlay.classList.remove(...OVERLAY_CLASSES);
+    if (name === 'none') return;
+    canvas.classList.add('shader-' + name);
+    const overlayMap = {
+        'crt': 'crt',
+        'scanlines': 'scanlines',
+        'scanlines-strong': 'scanlines-strong',
+        'lcd': 'lcd',
+        'glow': 'glow',
+        'vignette': 'vignette',
+        'classic': 'classic',
+        'smooth': null
+    };
+    const oc = overlayMap[name];
+    if (oc) shaderOverlay.classList.add(oc);
+}
+applyShader(shaderSelect.value);
+shaderSelect.addEventListener('change', e => applyShader(e.target.value));
+
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        if (screenWrap.requestFullscreen) screenWrap.requestFullscreen();
+        else if (screenWrap.webkitRequestFullscreen) screenWrap.webkitRequestFullscreen();
+    } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+}
+document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+        const px = parseInt(sizeSlider.value, 10);
+        canvas.style.width = px + 'px';
+        canvas.style.height = Math.round(px * 240 / 256) + 'px';
+    }
+});
+
+// ===================== SAVE STATES =====================
+function serializeState() {
+    // Pack the entire emulator state into a JSON-compatible object
+    const st = {
+        v: STATE_VERSION,
+        cpu: { a: CPU.a, x: CPU.x, y: CPU.y, sp: CPU.sp, pc: CPU.pc, p: CPU.p, nmiPending: CPU.nmiPending, totalCycles: CPU.totalCycles },
+        mem: Array.from(mem),
+        ppu: {
+            ctrl: PPU.ctrl, mask: PPU.mask, status: PPU.status, oamAddr: PPU.oamAddr,
+            oam: Array.from(PPU.oam),
+            vramAddr: PPU.vramAddr, tempAddr: PPU.tempAddr, renderAddr: PPU.renderAddr,
+            scrollX: PPU.scrollX, scrollY: PPU.scrollY, fineX: PPU.fineX,
+            writeToggle: PPU.writeToggle,
+            vram: Array.from(PPU.vram),
+            palette: Array.from(PPU.palette),
+            bufferedData: PPU.bufferedData
+        },
+        fds: {
+            timerReload, timerCounter, timerRepeat, timerIrqEnabled, timerIrqPending,
+            diskIoEnabled, diskIrqPending, ctl4025, driveMotor, driveReady, endHead,
+            readyDelay, byteTimer, diskPos, gapEnded, byteFlag, dataReg, extOut, newBlock,
+            mirrorHoriz, diskInserted, fdsCurrentSide
+        },
+        apu: {
+            p: A.p.map(c => ({...c})),
+            t: {...A.t},
+            n: {...A.n},
+            fc: A.fc, fstep: A.fstep, five: A.five,
+            F: {
+                wave: Array.from(F.wave), wen: F.wen, freq: F.freq, halt: F.halt, envOff: F.envOff, phase: F.phase,
+                gain: F.gain, vOff: F.vOff, vUp: F.vUp, vSpeed: F.vSpeed, vTick: F.vTick, envSpeed: F.envSpeed, master: F.master,
+                mgain: F.mgain, mOff: F.mOff, mUp: F.mUp, mSpeed: F.mSpeed, mTick: F.mTick, mc: F.mc, mfreq: F.mfreq,
+                mHalt: F.mHalt, macc: F.macc, mtab: Array.from(F.mtab), wpos: F.wpos, spos: F.spos
+            }
+        },
+        controller: { buttons: controller.buttons, strobe: controller.strobe, shift: controller.shift },
+        sram: sram ? Array.from(sram) : null,
+        romName: currentRomName
+    };
+    return st;
+}
+
+function deserializeState(st) {
+    if (!st || st.v !== STATE_VERSION) { log('Save state version mismatch or invalid'); return false; }
+    CPU.a = st.cpu.a; CPU.x = st.cpu.x; CPU.y = st.cpu.y; CPU.sp = st.cpu.sp;
+    CPU.pc = st.cpu.pc; CPU.p = st.cpu.p; CPU.nmiPending = st.cpu.nmiPending; CPU.totalCycles = st.cpu.totalCycles;
+    if (st.mem) mem.set(st.mem);
+    Object.assign(PPU, {
+        ctrl: st.ppu.ctrl, mask: st.ppu.mask, status: st.ppu.status, oamAddr: st.ppu.oamAddr,
+        vramAddr: st.ppu.vramAddr, tempAddr: st.ppu.tempAddr, renderAddr: st.ppu.renderAddr,
+        scrollX: st.ppu.scrollX, scrollY: st.ppu.scrollY, fineX: st.ppu.fineX,
+        writeToggle: st.ppu.writeToggle, bufferedData: st.ppu.bufferedData
+    });
+    PPU.oam.set(st.ppu.oam);
+    PPU.vram.set(st.ppu.vram);
+    PPU.palette.set(st.ppu.palette);
+    Object.assign(window, {
+        timerReload: st.fds.timerReload, timerCounter: st.fds.timerCounter, timerRepeat: st.fds.timerRepeat,
+        timerIrqEnabled: st.fds.timerIrqEnabled, timerIrqPending: st.fds.timerIrqPending,
+        diskIoEnabled: st.fds.diskIoEnabled, diskIrqPending: st.fds.diskIrqPending,
+        ctl4025: st.fds.ctl4025, driveMotor: st.fds.driveMotor, driveReady: st.fds.driveReady,
+        endHead: st.fds.endHead, readyDelay: st.fds.readyDelay, byteTimer: st.fds.byteTimer,
+        diskPos: st.fds.diskPos, gapEnded: st.fds.gapEnded, byteFlag: st.fds.byteFlag,
+        dataReg: st.fds.dataReg, extOut: st.fds.extOut, newBlock: st.fds.newBlock,
+        mirrorHoriz: st.fds.mirrorHoriz, diskInserted: st.fds.diskInserted
+    });
+    fdsCurrentSide = st.fds.fdsCurrentSide;
+    A.p = st.apu.p.map(c => ({...c}));
+    A.t = {...st.apu.t};
+    A.n = {...st.apu.n};
+    A.fc = st.apu.fc; A.fstep = st.apu.fstep; A.five = st.apu.five;
+    Object.assign(F, st.apu.F);
+    F.wave = Uint8Array.from(st.apu.F.wave);
+    F.mtab = Uint8Array.from(st.apu.F.mtab);
+    controller.buttons = st.controller.buttons;
+    controller.strobe = st.controller.strobe;
+    controller.shift = st.controller.shift;
+    if (st.sram && st.sram.length) {
+        sram = Uint8Array.from(st.sram);
+        updateSramBadge();
+    }
+    if (st.romName) currentRomName = st.romName;
+    updateDiskStatusBadge();
+    log('State loaded (PC=$' + CPU.pc.toString(16).toUpperCase() + ')');
+    return true;
+}
+
+function saveSlot(index) {
+    if (!running && !paused) {
+        // Allow saving even when paused (state is coherent at any frame boundary)
+    }
+    if (!biosReady) { log('Load BIOS first'); return; }
+    const st = serializeState();
+    st.timestamp = Date.now();
+    saveSlots[index] = st;
+    log('Saved to slot ' + (index + 1));
+    renderSaveSlots();
+}
+
+function loadSlot(index) {
+    if (!saveSlots[index]) { log('Slot ' + (index + 1) + ' is empty'); return; }
+    if (!biosReady) { log('Load BIOS first'); return; }
+    if (deserializeState(saveSlots[index])) {
+        updateDebuggerUI();
+    }
+}
+
+function quickSave(index) {
+    saveSlot(index);
+}
+function quickLoad(index) {
+    loadSlot(index);
+}
+
+// UI for save slots
+function renderSaveSlots() {
+    const container = document.getElementById('saveSlotList');
+    container.innerHTML = '';
+    for (let i = 0; i < SAVE_SLOTS; i++) {
+        const slot = saveSlots[i];
+        const div = document.createElement('div');
+        div.className = 'save-slot' + (slot ? '' : ' empty');
+        const dateStr = slot ? new Date(slot.timestamp).toLocaleString() : 'Empty';
+        const info = slot ? (slot.romName || 'ROM') + ' — PC $' + slot.cpu.pc.toString(16).toUpperCase() : '—';
+        div.innerHTML = `
+            <span class="slot-info">Slot ${i + 1}: ${dateStr}<br><span style="color:#6a6;">${info}</span></span>
+            <span class="slot-actions">
+                <button data-slot="${i}" data-act="save" class="save-btn">Save</button>
+                <button data-slot="${i}" data-act="load" class="load-btn">Load</button>
+            </span>`;
+        container.appendChild(div);
+    }
+    container.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.slot, 10);
+            if (btn.dataset.act === 'save') saveSlot(idx);
+            else loadSlot(idx);
+        });
+    });
+}
+
+document.getElementById('quickSaveBtn').addEventListener('click', () => quickSave(0));
+document.getElementById('quickLoadBtn').addEventListener('click', () => quickLoad(0));
+
+// Export / import state file
+document.getElementById('exportStateBtn').addEventListener('click', () => {
+    if (!biosReady) { log('Load BIOS first'); return; }
+    const st = serializeState();
+    st.timestamp = Date.now();
+    const blob = new Blob([JSON.stringify(st)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (currentRomName || 'game') + '.fdsstate';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log('State exported');
+});
+
+document.getElementById('importStateBtn').addEventListener('click', () => {
+    document.getElementById('stateFileInput').click();
+});
+
+document.getElementById('stateFileInput').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+        try {
+            const st = JSON.parse(ev.target.result);
+            if (deserializeState(st)) {
+                updateDebuggerUI();
+                renderSaveSlots();
+            }
+        } catch (err) {
+            log('Import failed: ' + err.message);
+        }
+    };
+    r.readAsText(f);
+    e.target.value = '';
+});
+
+// ===================== SRAM (battery save) =====================
+const SRAM_ADDR = 0x6000;
+const SRAM_SIZE = 0x2000;
+
+function updateSramBadge() {
+    const badge = document.getElementById('sramBadge');
+    if (!sram) { badge.textContent = 'SRAM: 0B'; return; }
+    let used = 0;
+    for (let i = 0; i < sram.length; i++) if (sram[i] !== 0) used++;
+    badge.textContent = 'SRAM: ' + sram.length + 'B';
+    document.getElementById('sramInfo').textContent =
+        'SRAM: ' + sram.length + ' bytes @ $' + SRAM_ADDR.toString(16).toUpperCase() +
+        ' — ' + used + ' non-zero bytes';
+}
+
+function initSram() {
+    sram = new Uint8Array(SRAM_SIZE);
+    // Copy into memory
+    for (let i = 0; i < SRAM_SIZE; i++) mem[SRAM_ADDR + i] = sram[i];
+    updateSramBadge();
+    log('SRAM initialized (' + SRAM_SIZE + ' bytes)');
+}
+
+// Save SRAM from memory back into the sram buffer whenever we save a state
+function captureSram() {
+    if (!sram) return;
+    for (let i = 0; i < SRAM_SIZE; i++) sram[i] = mem[SRAM_ADDR + i];
+}
+
+// Restore SRAM from the sram buffer into memory
+function restoreSram() {
+    if (!sram) return;
+    for (let i = 0; i < SRAM_SIZE; i++) mem[SRAM_ADDR + i] = sram[i];
+}
+
+document.getElementById('saveSramBtn').addEventListener('click', () => {
+    if (!sram) { log('SRAM not initialized'); return; }
+    captureSram();
+    const blob = new Blob([sram], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (currentRomName || 'game') + '.srm';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log('SRAM saved (' + sram.length + ' bytes)');
+});
+
+document.getElementById('loadSramBtn').addEventListener('click', () => {
+    document.getElementById('sramFileInput').click();
+});
+
+document.getElementById('sramFileInput').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+        const buf = new Uint8Array(ev.target.result);
+        if (buf.length === SRAM_SIZE) {
+            sram = buf;
+        } else {
+            log('SRAM file has wrong size (' + buf.length + ', expected ' + SRAM_SIZE + '); using first ' + SRAM_SIZE + ' bytes');
+            sram = new Uint8Array(SRAM_SIZE);
+            sram.set(buf.subarray(0, Math.min(buf.length, SRAM_SIZE)));
+        }
+        restoreSram();
+        updateSramBadge();
+        log('SRAM loaded');
+    };
+    r.readAsArrayBuffer(f);
+    e.target.value = '';
+});
+
+// ===================== MAIN EMULATION LOOP =====================
+const CYCLES_PER_LINE = 341 / 3;
+
+function runFrame() {
+    if (!running || paused) return;
+    pollGamepad();
+    applyCheats();
+
+    const now = performance.now();
+    fpsAccum += now - lastFrameTime;
+    lastFrameTime = now;
+    fpsFrames++;
+    if (fpsAccum >= 500) {
+        document.getElementById('fpsDisplay').textContent = 'FPS: ' + Math.round(fpsFrames * 1000 / fpsAccum);
+        fpsAccum = 0; fpsFrames = 0;
+    }
+
+    const framesToRun = speedMultiplier;
+    let wholeFrames = Math.floor(framesToRun);
+    let partial = framesToRun - wholeFrames;
+
+    for (let fi = 0; fi < wholeFrames && running && !paused; fi++) {
+        executeOneFrame();
+    }
+    if (partial > 0 && running && !paused) {
+        executePartialFrame(partial);
+    }
+
+    const img = ctx.createImageData(256, 240);
+    img.data.set(new Uint8ClampedArray(frameBuffer.buffer));
+    ctx.putImageData(img, 0, 0);
+    frameCount++;
+
+    if (frameCount % 30 === 0) updateDebuggerUI();
+
+    requestAnimationFrame(runFrame);
+}
+
+function executeOneFrame() {
+    PPU.renderAddr = PPU.tempAddr;
+    PPU.status &= ~0xC0;
+    inVBlank = false;
+
+    let cyc = 0;
+    for (let y = 0; y < 240; y++) {
+        const target = Math.floor(y * CYCLES_PER_LINE);
+        while (cyc < target && running && !paused) cyc += stepCPU();
+        if (!running || paused) return;
+        PPU.renderAddr = (PPU.renderAddr & ~0x041F) | (PPU.tempAddr & 0x041F);
+        renderScanline(y);
+        incRenderY();
+    }
+
+    while (cyc < 27507 && running && !paused) cyc += stepCPU();
+
+    inVBlank = true;
+    PPU.status |= 0x80;
+    if (PPU.ctrl & 0x80) CPU.nmiPending = true;
+    while (cyc < 29780 && running && !paused) cyc += stepCPU();
+
+    // Update SRAM buffer from memory (games write to $6000-$7FFF)
+    if (sram) captureSram();
+}
+
+function executePartialFrame(fraction) {
+    const totalCycles = Math.floor(29780 * fraction);
+    let cyc = 0;
+    while (cyc < totalCycles && running && !paused) cyc += stepCPU();
+    if (sram) captureSram();
+}
+
+function refreshButtons() {
+    const ready = biosReady && diskReady;
+    document.getElementById('runBtn').disabled = !ready;
+    document.getElementById('pauseBtn').disabled = !running;
+    document.getElementById('stepBtn').disabled = !paused && running;
+    document.getElementById('resetBtn').disabled = !running;
+    document.getElementById('sideSelect').disabled = !fdsRawData || fdsSideCount < 2 || !diskInserted;
+    document.getElementById('ejectBtn').disabled = !running || !diskInserted;
+    document.getElementById('ejectBtn').textContent = diskInserted ? 'Eject Disk' : 'Insert Disk';
+}
+
+function updateSideSelect() {
+    const sel = document.getElementById('sideSelect');
+    sel.innerHTML = '';
+    for (let i = 0; i < fdsSideCount; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = 'Side ' + String.fromCharCode(65 + i);
+        sel.appendChild(opt);
+    }
+    sel.value = fdsCurrentSide;
+}
+
+function consoleReset() {
+    mem.fill(0, 0, 0xE000);
+    PPU.vram.fill(0); PPU.palette.fill(0); PPU.oam.fill(0);
+    PPU.ctrl = 0; PPU.mask = 0; PPU.status = 0; PPU.writeToggle = false;
+    PPU.vramAddr = 0; PPU.tempAddr = 0; PPU.renderAddr = 0;
+    PPU.scrollX = 0; PPU.scrollY = 0; PPU.fineX = 0;
+    fdsReset(); apuReset();
+    controller.strobe = false; controller.shift = 0;
+    CPU.nmiPending = false;
+    CPU.pc = read16(0xFFFC);
+    CPU.sp = 0xFD; CPU.p = 0x24;
+    CPU.a = CPU.x = CPU.y = 0;
+    CPU.totalCycles = 0;
+    frameCount = 0;
+    inVBlank = false;
+    // Restore SRAM (saved game data should survive reset)
+    if (sram) restoreSram();
+    log('Reset (PC=$' + CPU.pc.toString(16).toUpperCase() + ')');
+}
+
+function toggleDisk() {
+    if (!running) {
+        if (fdsRawData) {
+            if (diskInserted) ejectDisk(); else insertDisk();
+            refreshButtons();
+        }
+        return;
+    }
+    if (diskInserted) ejectDisk(); else insertDisk();
+    refreshButtons();
+}
+
+document.getElementById('ejectBtn').addEventListener('click', toggleDisk);
+
+document.getElementById('biosFile').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) { biosReady = false; refreshButtons(); return; }
+    const r = new FileReader();
+    r.onload = ev => {
+        const buf = new Uint8Array(ev.target.result);
+        if (buf.length !== 8192) { alert('BIOS must be 8KB'); return; }
+        mem.set(buf, 0xE000);
+        biosReady = true; log('BIOS loaded'); refreshButtons();
+    };
+    r.readAsArrayBuffer(f);
+});
+
+document.getElementById('fdsFile').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) { diskReady = false; fdsRawData = null; diskInserted = false; refreshButtons(); updateDiskStatusBadge(); return; }
+    currentRomName = f.name.replace(/\.fds$/i, '');
+    const r = new FileReader();
+    r.onload = ev => {
+        fdsRawData = new Uint8Array(ev.target.result);
+        fdsSideCount = 1;
+        if (fdsRawData.length >= 16 && fdsRawData[0] === 0x46 && fdsRawData[1] === 0x44 && fdsRawData[2] === 0x53 && fdsRawData[3] === 0x1A) {
+            fdsSideCount = fdsRawData[4] || 1;
+        }
+        fdsCurrentSide = 0;
+        fdsData = buildVirtualDisk(fdsRawData, 0);
+        log('Virtual disk: ' + fdsData.length + ' bytes, ' + fdsSideCount + ' side(s)');
+        diskReady = fdsData.length > 0;
+        diskInserted = diskReady;
+        updateSideSelect();
+        updateDiskStatusBadge();
+        // Initialize SRAM if not present
+        if (!sram) initSram();
+        refreshButtons();
+    };
+    r.readAsArrayBuffer(f);
+});
+
+document.getElementById('sideSelect').addEventListener('change', e => {
+    const side = parseInt(e.target.value, 10);
+    if (!fdsRawData || side === fdsCurrentSide) return;
+    if (side >= fdsSideCount) return;
+    fdsCurrentSide = side;
+    fdsData = buildVirtualDisk(fdsRawData, side);
+    driveMotor = false; driveReady = false; endHead = false;
+    readyDelay = 0; diskPos = 0; gapEnded = false; byteFlag = false;
+    log('Switched to side ' + String.fromCharCode(65 + side) + ' (' + fdsData.length + ' bytes)');
+    updateDiskStatusBadge();
+    refreshButtons();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+    if (!running) return;
+    consoleReset();
+    updateDebuggerUI();
+});
+
+document.getElementById('runBtn').addEventListener('click', () => {
+    if (!running) {
+        running = true;
+        paused = false;
+        fdsReset(); inVBlank = false;
+        apuReset(); audioInit();
+        frameCount = 0; CPU.totalCycles = 0;
+        
+        mem.fill(0, 0, 0xE000);
+        PPU.vram.fill(0); PPU.palette.fill(0); PPU.oam.fill(0);
+        PPU.ctrl = 0; PPU.mask = 0; PPU.status = 0; PPU.writeToggle = false;
+        PPU.vramAddr = 0; PPU.tempAddr = 0; PPU.renderAddr = 0;
+        PPU.scrollX = 0; PPU.scrollY = 0; PPU.fineX = 0;
+
+        if (fdsRawData) {
+            diskInserted = true;
+            updateDiskStatusBadge();
+        }
+        if (sram) restoreSram();
+
+        CPU.pc = read16(0xFFFC);
+        CPU.sp = 0xFD; CPU.p = 0x24;
+        CPU.a = CPU.x = CPU.y = 0; CPU.nmiPending = false;
+        log('Running... reset=$'+CPU.pc.toString(16));
+    } else {
+        paused = false;
+    }
+    document.getElementById('runBtn').textContent = 'Resume';
+    document.getElementById('pauseBtn').textContent = 'Pause';
+    refreshButtons();
+    canvas.focus();
+    lastFrameTime = performance.now();
+    requestAnimationFrame(runFrame);
+});
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pauseBtn').textContent = paused ? 'Unpause' : 'Pause';
+    if (paused) {
+        updateDebuggerUI();
+        log('Emulator paused at PC=$' + CPU.pc.toString(16).toUpperCase());
+    } else {
+        lastFrameTime = performance.now();
+        requestAnimationFrame(runFrame);
+    }
+    refreshButtons();
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+    if (!running) return;
+    paused = true;
+    stepCPU();
+    updateDebuggerUI();
+    canvas.focus();
+});
+
+document.getElementById('hexGoBtn').addEventListener('click', () => {
+    updateHexEditor();
+});
+
+refreshButtons();
+ctx.fillStyle = '#000';
+ctx.fillRect(0, 0, 256, 240);
+updateHexEditor();
+renderCheats();
+renderSaveSlots();
+updateDiskStatusBadge();
+updateSramBadge();
+</script>
+</body>
+</html>

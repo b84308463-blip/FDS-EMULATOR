@@ -56,4 +56,5 @@ fast_disk = false
 write_protect = true
 
 Rules
+
 This program is only for learning and keeping old games alive. It does not come with any game files or BIOS files. Famicom and Famicom Disk System are owned by Nintendo. This project is not made by Nintendo.

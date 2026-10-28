@@ -2,6 +2,7 @@ FDS Emulator
 A program that lets you play Famicom Disk System games on your computer.
 
 Website: https://b84308463-blip.github.io/FDS-EMULATOR
+
 GitHub: https://github.com/b84308463-blip/FDS-EMULATOR
 
 What it does

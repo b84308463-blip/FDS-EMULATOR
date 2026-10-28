@@ -48,17 +48,22 @@ Restart	Ctrl+R
 Settings
 You can change settings in a file called config.ini:
 
+
 ini
 [video]
 scale = 3
 vsync = true
 
+
 [audio]
 sample_rate = 48000
+
 
 [fds]
 bios_path = bios/disksys.rom
 fast_disk = false
 write_protect = true
+
 Rules
+
 This program is only for learning and keeping old games alive. It does not come with any game files or BIOS files. Famicom and Famicom Disk System are owned by Nintendo. This project is not made by Nintendo.
